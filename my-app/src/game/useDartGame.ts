@@ -15,6 +15,8 @@ export interface DartThrow {
 export interface Player {
   name: string
   score: number
+  // The darts thrown on this player's most recently completed turn.
+  lastThrows: DartThrow[]
 }
 
 interface Snapshot {
@@ -59,7 +61,7 @@ export function useDartGame() {
 
   function snapshot(): Snapshot {
     return {
-      players: players.value.map((p) => ({ ...p })),
+      players: players.value.map((p) => ({ ...p, lastThrows: [...p.lastThrows] })),
       currentPlayerIndex: currentPlayerIndex.value,
       currentThrows: currentThrows.value.map((t) => ({ ...t })),
       finishOrder: [...finishOrder.value],
@@ -77,6 +79,9 @@ export function useDartGame() {
   }
 
   function advanceTurn() {
+    // Remember this player's darts so their card keeps showing them.
+    const finishing = players.value[currentPlayerIndex.value]
+    if (finishing) finishing.lastThrows = [...currentThrows.value]
     currentThrows.value = []
     currentPlayerIndex.value = nextActiveIndex(currentPlayerIndex.value)
   }
@@ -97,6 +102,7 @@ export function useDartGame() {
 
     if (newScore === 0) {
       player.score = 0
+      player.lastThrows = [...currentThrows.value] // keep the winning darts on the card
       finishOrder.value.push(currentPlayerIndex.value)
       bannerIndex.value = currentPlayerIndex.value // pause for the overlay
       return
@@ -136,7 +142,7 @@ export function useDartGame() {
 
   // Start a game with the given players, in the given play order.
   function startGame(names: string[]) {
-    players.value = names.map((name) => ({ name, score: START_SCORE }))
+    players.value = names.map((name) => ({ name, score: START_SCORE, lastThrows: [] }))
     currentPlayerIndex.value = 0
     currentThrows.value = []
     finishOrder.value = []

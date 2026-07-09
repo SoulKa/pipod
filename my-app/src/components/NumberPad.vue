@@ -26,12 +26,6 @@ function isIllegal(base: number): boolean {
   return base === 25 && multiplier.value === 3
 }
 
-function label(base: number): string {
-  if (base === 0) return 'Miss'
-  if (base === 25) return 'Bull'
-  return String(base)
-}
-
 function pressNumber(base: number) {
   if (props.disabled || isIllegal(base)) return
   emit('throw', base, multiplier.value)
@@ -61,7 +55,7 @@ const hint = computed(() => {
         :disabled="props.disabled || isIllegal(n)"
         @click="pressNumber(n)"
       >
-        {{ label(n) }}
+        {{ n }}
       </button>
     </div>
 

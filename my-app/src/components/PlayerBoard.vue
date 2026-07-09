@@ -33,10 +33,20 @@ function throwLabel(t: DartThrow): string {
   return `${prefix}${t.base}`
 }
 
-// Turn progress bar width (points scored so far this turn vs a full 180).
-const turnPoints = computed(() =>
-  props.currentThrows.reduce((sum, t) => sum + t.points, 0),
-)
+// A card shows a "live" turn only while the active player is mid-throw.
+function isLive(index: number): boolean {
+  return isActive(index) && props.currentThrows.length > 0
+}
+
+// Darts to show on a card: the live turn while throwing, otherwise the
+// player's most recently completed turn (persists until they throw again).
+function throwsFor(index: number): DartThrow[] {
+  return isLive(index) ? props.currentThrows : (props.players[index]?.lastThrows ?? [])
+}
+
+function sumOf(throws: DartThrow[]): number {
+  return throws.reduce((total, t) => total + t.points, 0)
+}
 
 // Adapt the grid to the roster size: stack when 2 players, 2 columns otherwise.
 const gridStyle = computed(() => ({
@@ -68,18 +78,16 @@ const gridStyle = computed(() => ({
         ></div>
       </div>
 
-      <div class="throws">
-        <template v-if="isActive(index)">
-          <span
-            v-for="slot in slots"
-            :key="slot"
-            class="pip"
-            :class="{ filled: props.currentThrows[slot] }"
-          >
-            {{ props.currentThrows[slot] ? throwLabel(props.currentThrows[slot]!) : '' }}
-          </span>
-          <span class="turn-total">= {{ turnPoints }}</span>
-        </template>
+      <div class="throws" :class="{ dim: !isLive(index) }">
+        <span
+          v-for="slot in slots"
+          :key="slot"
+          class="pip"
+          :class="{ filled: throwsFor(index)[slot], empty: !throwsFor(index)[slot] }"
+        >
+          {{ throwsFor(index)[slot] ? throwLabel(throwsFor(index)[slot]!) : '' }}
+        </span>
+        <span v-if="throwsFor(index).length" class="turn-total">= {{ sumOf(throwsFor(index)) }}</span>
       </div>
     </div>
   </div>
@@ -98,11 +106,12 @@ const gridStyle = computed(() => ({
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 6px;
   border-radius: 20px;
   background: linear-gradient(160deg, #172033, #0e1524);
   border: 2px solid rgba(148, 163, 184, 0.12);
-  padding: 16px 18px;
+  padding: 14px 18px;
   overflow: hidden;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
@@ -168,7 +177,7 @@ const gridStyle = computed(() => ({
 }
 
 .score {
-  font-size: 68px;
+  font-size: 60px;
   font-weight: 900;
   line-height: 1;
   color: #fff;
@@ -197,12 +206,11 @@ const gridStyle = computed(() => ({
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
 }
 
 .pip {
   min-width: 44px;
-  height: 38px;
+  height: 36px;
   padding: 0 6px;
   display: flex;
   align-items: center;
@@ -219,6 +227,17 @@ const gridStyle = computed(() => ({
   border-style: solid;
   border-color: var(--accent);
   color: #f1f5f9;
+}
+
+/* On inactive cards, don't draw placeholder slots — only real darts. */
+.throws.dim .pip.empty {
+  border-color: transparent;
+  background: transparent;
+}
+
+.throws.dim .pip.filled {
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #cbd5e1;
 }
 
 .turn-total {

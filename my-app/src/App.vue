@@ -142,7 +142,7 @@ h1 {
 }
 
 .board-area {
-  flex: 0 0 42%;
+  flex: 0 0 33%;
   min-height: 0;
 }
 
