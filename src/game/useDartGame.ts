@@ -1,7 +1,6 @@
 import { computed, ref } from 'vue'
 import { suggestCheckouts, type CheckoutRoute } from './checkout'
 
-export const PLAYERS = ['Marco', 'Amir', 'Louis', 'Korni'] as const
 export const THROWS_PER_TURN = 3
 
 // Selectable starting scores and finishing rules.

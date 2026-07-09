@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { DEFAULT_OPTIONS, PLAYERS, START_SCORES, type OutMode } from '../game/useDartGame'
+import { computed, ref, watch } from 'vue'
+import { DEFAULT_OPTIONS, START_SCORES, type OutMode } from '../game/useDartGame'
+import { loadSetup, saveSetup } from '../game/setupStorage'
 import VirtualKeyboard from './VirtualKeyboard.vue'
 
 const emit = defineEmits<{
   start: [config: { names: string[]; startScore: number; outMode: OutMode }]
 }>()
 
+// Restore the last-used roster & options (null on first run / cleared storage).
+const stored = loadSetup()
+
 // Game options, opened via the gear button.
-const startScore = ref<number>(DEFAULT_OPTIONS.startScore)
-const outMode = ref<OutMode>(DEFAULT_OPTIONS.outMode)
+const startScore = ref<number>(stored?.startScore ?? DEFAULT_OPTIONS.startScore)
+const outMode = ref<OutMode>(stored?.outMode ?? DEFAULT_OPTIONS.outMode)
 const showOptions = ref(false)
 
 const outModeLabel = computed(() => (outMode.value === 'double' ? 'Double out' : 'Single out'))
@@ -24,10 +28,29 @@ interface RosterPlayer {
 }
 
 let uid = 0
-// Seed with the previous defaults; the roster is now fully editable.
-const roster = ref<RosterPlayer[]>(PLAYERS.map((name) => ({ id: uid++, name, selected: true })))
+// Restore the saved roster, or start with a single empty row on first run.
+// Ephemeral ids are regenerated here; they are never persisted.
+const roster = ref<RosterPlayer[]>(
+  stored && stored.roster.length
+    ? stored.roster.map((e) => ({ id: uid++, name: e.name, selected: e.selected }))
+    : [{ id: uid++, name: '', selected: true }],
+)
 // Starting order ("bull out"), stored by id so renaming keeps the order intact.
+// Not persisted — it's a per-match decision that resets each session.
 const order = ref<number[]>([])
+
+// Persist names, selection and options whenever they change.
+watch(
+  [roster, startScore, outMode],
+  () => {
+    saveSetup({
+      roster: roster.value.map((p) => ({ name: p.name, selected: p.selected })),
+      startScore: startScore.value,
+      outMode: outMode.value,
+    })
+  },
+  { deep: true },
+)
 
 // Which player's name is being typed on the on-screen keyboard (no HW keyboard on the Pi).
 const editingId = ref<number | null>(null)
