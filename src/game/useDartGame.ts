@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { suggestCheckouts, type CheckoutRoute } from './checkout'
 
 export const PLAYERS = ['Marco', 'Amir', 'Louis', 'Korni'] as const
 export const THROWS_PER_TURN = 3
@@ -58,6 +59,15 @@ export function useDartGame() {
   const isGameOver = computed(() => finishOrder.value.length >= players.value.length - 1)
   const canUndo = computed(() => history.value.length > 0)
   const showBanner = computed(() => bannerIndex.value !== null)
+
+  // Ways for the active player to finish this turn (empty when none / not applicable).
+  const checkoutRoutes = computed<CheckoutRoute[]>(() => {
+    if (phase.value !== 'playing' || isGameOver.value || showBanner.value) return []
+    const player = currentPlayer.value
+    if (!player) return []
+    const dartsLeft = THROWS_PER_TURN - currentThrows.value.length
+    return suggestCheckouts(player.score, dartsLeft, options.value.outMode)
+  })
 
   // Final standings: finishers in order, then the remaining player(s) last.
   const standings = computed<Player[]>(() => {
@@ -204,6 +214,7 @@ export function useDartGame() {
     isGameOver,
     canUndo,
     showBanner,
+    checkoutRoutes,
     standings,
     placeOf,
     throwDart,
