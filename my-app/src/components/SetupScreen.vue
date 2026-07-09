@@ -103,10 +103,6 @@ function removeFromOrder(id: number) {
   order.value = order.value.filter((n) => n !== id)
 }
 
-function clearOrder() {
-  order.value = []
-}
-
 function useListedOrder() {
   order.value = validPlayers.value.map((p) => p.id)
 }
@@ -179,7 +175,6 @@ function start() {
         </button>
       </div>
 
-      <button v-if="order.length" class="link clear" @click="clearOrder">clear order</button>
     </section>
 
     <button class="start" :disabled="!canStart" @click="start">{{ startLabel }}</button>
@@ -376,7 +371,9 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
   min-height: 60px;
+  overflow-y: auto;
 }
 
 .ordered {
@@ -421,7 +418,9 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 4px;
+  flex: none;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
 }
 
 .chip {
@@ -448,11 +447,6 @@ h2 {
   font-weight: 700;
   cursor: pointer;
   padding: 0;
-}
-
-.link.clear {
-  align-self: flex-start;
-  color: #fb7185;
 }
 
 .start {
