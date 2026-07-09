@@ -25,12 +25,10 @@ interface Snapshot {
   bannerIndex: number | null
 }
 
-function initialPlayers(): Player[] {
-  return PLAYERS.map((name) => ({ name, score: START_SCORE }))
-}
-
 export function useDartGame() {
-  const players = ref<Player[]>(initialPlayers())
+  // 'setup' = choosing players & order; 'playing' = a game is in progress.
+  const phase = ref<'setup' | 'playing'>('setup')
+  const players = ref<Player[]>([])
   const currentPlayerIndex = ref(0)
   const currentThrows = ref<DartThrow[]>([])
   // Player indices in the order they reached exactly 0 (1st, 2nd, ...).
@@ -136,9 +134,21 @@ export function useDartGame() {
     bannerIndex.value = prev.bannerIndex
   }
 
-  function reset() {
-    players.value = initialPlayers()
+  // Start a game with the given players, in the given play order.
+  function startGame(names: string[]) {
+    players.value = names.map((name) => ({ name, score: START_SCORE }))
     currentPlayerIndex.value = 0
+    currentThrows.value = []
+    finishOrder.value = []
+    bannerIndex.value = null
+    history.value = []
+    phase.value = 'playing'
+  }
+
+  // Return to the setup screen to change roster / order.
+  function backToSetup() {
+    phase.value = 'setup'
+    players.value = []
     currentThrows.value = []
     finishOrder.value = []
     bannerIndex.value = null
@@ -146,6 +156,7 @@ export function useDartGame() {
   }
 
   return {
+    phase,
     players,
     currentPlayerIndex,
     currentThrows,
@@ -160,6 +171,7 @@ export function useDartGame() {
     throwDart,
     continuePlaying,
     undo,
-    reset,
+    startGame,
+    backToSetup,
   }
 }

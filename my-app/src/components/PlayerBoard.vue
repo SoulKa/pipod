@@ -37,10 +37,15 @@ function throwLabel(t: DartThrow): string {
 const turnPoints = computed(() =>
   props.currentThrows.reduce((sum, t) => sum + t.points, 0),
 )
+
+// Adapt the grid to the roster size: stack when 2 players, 2 columns otherwise.
+const gridStyle = computed(() => ({
+  gridTemplateColumns: props.players.length <= 2 ? '1fr' : '1fr 1fr',
+}))
 </script>
 
 <template>
-  <div class="board">
+  <div class="board" :style="gridStyle">
     <div
       v-for="(player, index) in props.players"
       :key="player.name"
@@ -83,8 +88,7 @@ const turnPoints = computed(() =>
 <style scoped>
 .board {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-auto-rows: 1fr;
   gap: 14px;
   height: 100%;
 }

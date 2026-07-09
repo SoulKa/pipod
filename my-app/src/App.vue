@@ -2,9 +2,11 @@
 import { computed } from 'vue'
 import NumberPad from './components/NumberPad.vue'
 import PlayerBoard from './components/PlayerBoard.vue'
+import SetupScreen from './components/SetupScreen.vue'
 import { useDartGame } from './game/useDartGame'
 
 const {
+  phase,
   players,
   currentPlayerIndex,
   currentThrows,
@@ -17,7 +19,8 @@ const {
   throwDart,
   continuePlaying,
   undo,
-  reset,
+  startGame,
+  backToSetup,
 } = useDartGame()
 
 const PLACE_LABELS = ['1st', '2nd', '3rd', '4th']
@@ -31,11 +34,13 @@ const justFinishedPlace = computed(() =>
 </script>
 
 <template>
-  <div class="game">
+  <SetupScreen v-if="phase === 'setup'" @start="startGame" />
+
+  <div v-else class="game">
     <header class="topbar">
       <h1>🎯 301</h1>
       <span class="subtitle">301 down · 3 darts</span>
-      <button class="ghost-btn" @click="reset">New Game</button>
+      <button class="ghost-btn" @click="backToSetup">New Game</button>
     </header>
 
     <section class="board-area">
@@ -80,7 +85,7 @@ const justFinishedPlace = computed(() =>
         <div class="modal-actions">
           <button v-if="!isGameOver" class="primary" @click="continuePlaying">Continue Playing</button>
           <button class="secondary" :disabled="!canUndo" @click="undo">↺ Undo last throw</button>
-          <button class="secondary" @click="reset">New Game</button>
+          <button class="secondary" @click="backToSetup">New Game</button>
         </div>
       </div>
     </div>
