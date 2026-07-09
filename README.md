@@ -1,42 +1,72 @@
-# my-app
+# 🎯 pi-darts
 
-This template should help get you started developing with Vue 3 in Vite.
+A touch-first darts scoreboard for the Raspberry Pi. Built with Vue 3 + Vite, it runs
+full-screen on the Pi's touchscreen and is scored entirely by tapping — no hardware keyboard
+required.
 
-## Recommended IDE Setup
+## Features
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- **Game modes** — start from **301** or **501**, with **single-out** or **double-out**
+  finishing rules (full standard checkout rules: must finish on a double, leaving 1 busts).
+  Configurable from the gear (⚙️) on the setup screen.
+- **Any number of players** — add, rename, remove, and select players. The roster and options
+  are **persisted** across sessions (via `localStorage`), so the app comes back up with your
+  regulars already there.
+- **Bull-out ordering** — set the play order by tapping names; the name row stays put and
+  scrolls horizontally for long rosters.
+- **Checkout suggestions** — while you throw, the number pad shows up to three ways to finish
+  from the current score, respecting the active out mode and darts left in the turn.
+- **Turn handling** — 3 darts per turn, bust detection, per-turn undo, and finish/placement
+  overlays for multi-player games.
+- **Touchscreen-friendly** — large tap targets sized for finger input, an on-screen keyboard
+  for naming, and a confirmation guard before a "New Game" discards an in-progress match.
 
-## Recommended Browser Setup
+## Tech stack
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+- [Vue 3](https://vuejs.org/) (`<script setup>`, composition API)
+- [Vite](https://vite.dev/) for dev/build
+- TypeScript, type-checked with `vue-tsc`
 
-## Type Support for `.vue` Imports in TS
+Game logic lives in [`src/game/`](src/game/) as framework-agnostic modules
+(`useDartGame.ts`, `checkout.ts`, `setupStorage.ts`); the UI is a small set of components
+under [`src/components/`](src/components/).
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Project setup
 
 ```sh
 npm install
 ```
 
-### Compile and Hot-Reload for Development
+### Develop (hot reload)
 
 ```sh
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
+### Type-check
+
+```sh
+npm run type-check
+```
+
+### Build for production
 
 ```sh
 npm run build
 ```
+
+The build outputs static files to `dist/`. Preview the production build locally with:
+
+```sh
+npm run preview
+```
+
+## Running on the Raspberry Pi
+
+Serve the contents of `dist/` (any static server works) and open it full-screen in the Pi's
+browser (e.g. Chromium in kiosk mode) pointed at the local URL. The UI is designed for the
+Pi's touchscreen resolution and assumes touch input.
+
+## Requirements
+
+- Node.js `^22.18.0 || >=24.12.0` (see `engines` in `package.json`)
