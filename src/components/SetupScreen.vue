@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { PLAYERS } from '../game/useDartGame'
+import { DEFAULT_OPTIONS, PLAYERS, START_SCORES, type OutMode } from '../game/useDartGame'
 import VirtualKeyboard from './VirtualKeyboard.vue'
 
 const emit = defineEmits<{
-  start: [names: string[]]
+  start: [config: { names: string[]; startScore: number; outMode: OutMode }]
 }>()
+
+// Game options, opened via the gear button.
+const startScore = ref<number>(DEFAULT_OPTIONS.startScore)
+const outMode = ref<OutMode>(DEFAULT_OPTIONS.outMode)
+const showOptions = ref(false)
+
+const outModeLabel = computed(() => (outMode.value === 'double' ? 'Double out' : 'Single out'))
 
 const ACCENTS = ['#22d3ee', '#a78bfa', '#f472b6', '#4ade80', '#fbbf24', '#fb7185']
 const PLACE_LABELS = ['1st', '2nd', '3rd', '4th', '5th', '6th']
@@ -108,15 +115,24 @@ function useListedOrder() {
 }
 
 function start() {
-  if (canStart.value) emit('start', order.value.map(nameOf))
+  if (canStart.value) {
+    emit('start', {
+      names: order.value.map(nameOf),
+      startScore: startScore.value,
+      outMode: outMode.value,
+    })
+  }
 }
 </script>
 
 <template>
   <div class="setup">
     <header class="head">
-      <h1>🎯 301</h1>
-      <p class="tag">Set up the match</p>
+      <div class="head-row">
+        <h1>🎯 {{ startScore }}</h1>
+        <button class="gear" aria-label="Game options" @click="showOptions = true">⚙️</button>
+      </div>
+      <p class="tag">Set up the match · {{ startScore }} · {{ outModeLabel }}</p>
     </header>
 
     <section class="panel">
@@ -189,6 +205,41 @@ function start() {
       @update:model-value="setEditingName"
       @close="closeKeyboard"
     />
+
+    <div v-if="showOptions" class="options-overlay" @click.self="showOptions = false">
+      <div class="options-modal">
+        <div class="options-title">Game options</div>
+
+        <div class="option">
+          <span class="option-label">Start score</span>
+          <div class="segmented">
+            <button
+              v-for="s in START_SCORES"
+              :key="s"
+              class="seg"
+              :class="{ active: startScore === s }"
+              @click="startScore = s"
+            >
+              {{ s }}
+            </button>
+          </div>
+        </div>
+
+        <div class="option">
+          <span class="option-label">Out mode</span>
+          <div class="segmented">
+            <button class="seg" :class="{ active: outMode === 'single' }" @click="outMode = 'single'">
+              Single out
+            </button>
+            <button class="seg" :class="{ active: outMode === 'double' }" @click="outMode = 'double'">
+              Double out
+            </button>
+          </div>
+        </div>
+
+        <button class="options-done" @click="showOptions = false">Done</button>
+      </div>
+    </div>
   </Teleport>
 </template>
 
@@ -202,6 +253,12 @@ function start() {
   overflow-y: auto;
 }
 
+.head-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .head h1 {
   font-size: 48px;
   font-weight: 900;
@@ -210,6 +267,22 @@ function start() {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.gear {
+  margin-left: auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(2, 6, 23, 0.5);
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.gear:active {
+  transform: scale(0.96);
 }
 
 .tag {
@@ -467,6 +540,92 @@ h2 {
 }
 
 .start:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+/* Game-options overlay */
+.options-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  z-index: 20;
+}
+
+.options-modal {
+  width: 100%;
+  background: linear-gradient(160deg, #1e293b, #0f172a);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 24px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+}
+
+.options-title {
+  font-size: 32px;
+  font-weight: 900;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.option-label {
+  font-size: 20px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.segmented {
+  display: flex;
+  gap: 10px;
+}
+
+.seg {
+  flex: 1;
+  padding: 18px;
+  border-radius: 16px;
+  border: 2px solid rgba(148, 163, 184, 0.25);
+  background: rgba(2, 6, 23, 0.5);
+  color: #cbd5e1;
+  font-size: 24px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.seg.active {
+  border-color: #22d3ee;
+  background: color-mix(in srgb, #22d3ee 16%, #0b1220);
+  color: #f1f5f9;
+}
+
+.seg:active {
+  transform: scale(0.98);
+}
+
+.options-done {
+  border: none;
+  border-radius: 16px;
+  padding: 20px;
+  font-size: 24px;
+  font-weight: 900;
+  cursor: pointer;
+  background: linear-gradient(180deg, #22d3ee, #0891b2);
+  color: #04283b;
+}
+
+.options-done:active {
   transform: scale(0.99);
 }
 </style>

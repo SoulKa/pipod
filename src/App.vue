@@ -7,6 +7,7 @@ import { useDartGame } from './game/useDartGame'
 
 const {
   phase,
+  options,
   players,
   currentPlayerIndex,
   currentThrows,
@@ -29,6 +30,8 @@ function placeLabel(i: number): string {
   return PLACE_LABELS[i] ?? `${i + 1}th`
 }
 
+const outModeLabel = computed(() => (options.value.outMode === 'double' ? 'double out' : 'single out'))
+
 const justFinishedName = computed(() =>
   bannerIndex.value === null ? '' : (players.value[bannerIndex.value]?.name ?? ''),
 )
@@ -42,8 +45,8 @@ const justFinishedPlace = computed(() =>
 
   <div v-else class="game">
     <header class="topbar">
-      <h1>🎯 301</h1>
-      <span class="subtitle">301 down · 3 darts</span>
+      <h1>🎯 {{ options.startScore }}</h1>
+      <span class="subtitle">{{ options.startScore }} down · {{ outModeLabel }} · 3 darts</span>
       <button class="ghost-btn" @click="backToSetup">New Game</button>
     </header>
 
@@ -54,6 +57,7 @@ const justFinishedPlace = computed(() =>
         :current-throws="currentThrows"
         :finish-order="finishOrder"
         :game-over="isGameOver"
+        :start-score="options.startScore"
       />
     </section>
 

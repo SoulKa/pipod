@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { START_SCORE, THROWS_PER_TURN, type DartThrow, type Player } from '../game/useDartGame'
+import { THROWS_PER_TURN, type DartThrow, type Player } from '../game/useDartGame'
 
 const props = defineProps<{
   players: Player[]
@@ -8,6 +8,7 @@ const props = defineProps<{
   currentThrows: DartThrow[]
   finishOrder: number[]
   gameOver: boolean
+  startScore: number
 }>()
 
 // One accent colour per player, keyed by index.
@@ -74,7 +75,7 @@ const gridStyle = computed(() => ({
       <div class="progress">
         <div
           class="progress-fill"
-          :style="{ width: (100 * (START_SCORE - player.score)) / START_SCORE + '%' }"
+          :style="{ width: (100 * (props.startScore - player.score)) / props.startScore + '%' }"
         ></div>
       </div>
 

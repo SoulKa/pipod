@@ -1,8 +1,18 @@
 import { computed, ref } from 'vue'
 
 export const PLAYERS = ['Marco', 'Amir', 'Louis', 'Korni'] as const
-export const START_SCORE = 301
 export const THROWS_PER_TURN = 3
+
+// Selectable starting scores and finishing rules.
+export const START_SCORES = [301, 501] as const
+export type OutMode = 'single' | 'double'
+
+export interface GameOptions {
+  startScore: number
+  outMode: OutMode
+}
+
+export const DEFAULT_OPTIONS: GameOptions = { startScore: 301, outMode: 'single' }
 
 export type Multiplier = 1 | 2 | 3
 
@@ -30,6 +40,8 @@ interface Snapshot {
 export function useDartGame() {
   // 'setup' = choosing players & order; 'playing' = a game is in progress.
   const phase = ref<'setup' | 'playing'>('setup')
+  // Options for the game currently in progress (set by startGame).
+  const options = ref<GameOptions>({ ...DEFAULT_OPTIONS })
   const players = ref<Player[]>([])
   const currentPlayerIndex = ref(0)
   const currentThrows = ref<DartThrow[]>([])
@@ -86,6 +98,14 @@ export function useDartGame() {
     currentPlayerIndex.value = nextActiveIndex(currentPlayerIndex.value)
   }
 
+  // Bust: cancel the whole turn and revert to the start-of-turn score.
+  // Assumes the current dart's points have NOT yet been subtracted from player.score.
+  function bust(player: Player, currentPoints: number) {
+    const turnPoints = currentThrows.value.reduce((sum, t) => sum + t.points, 0)
+    player.score += turnPoints - currentPoints
+    advanceTurn()
+  }
+
   function throwDart(base: number, multiplier: Multiplier) {
     // Ignore input while the result overlay is up or the game is finished.
     if (isGameOver.value || showBanner.value) return
@@ -97,22 +117,28 @@ export function useDartGame() {
 
     const points = base * multiplier
     const newScore = player.score - points
+    // A "double" for checkout purposes: any double, incl. double-bull (25×2=50).
+    const isDouble = multiplier === 2
+    const doubleOut = options.value.outMode === 'double'
 
     currentThrows.value.push({ base, multiplier, points })
 
+    // Below zero always busts. In double-out, leaving exactly 1 also busts
+    // (you can't check out from 1), as does reaching 0 on a non-double.
+    if (newScore < 0 || (doubleOut && newScore === 1)) {
+      bust(player, points)
+      return
+    }
+
     if (newScore === 0) {
+      if (doubleOut && !isDouble) {
+        bust(player, points)
+        return
+      }
       player.score = 0
       player.lastThrows = [...currentThrows.value] // keep the winning darts on the card
       finishOrder.value.push(currentPlayerIndex.value)
       bannerIndex.value = currentPlayerIndex.value // pause for the overlay
-      return
-    }
-
-    if (newScore < 0) {
-      // Bust: cancel the whole turn, revert to the start-of-turn score.
-      const turnPoints = currentThrows.value.reduce((sum, t) => sum + t.points, 0)
-      player.score += turnPoints - points
-      advanceTurn()
       return
     }
 
@@ -140,9 +166,14 @@ export function useDartGame() {
     bannerIndex.value = prev.bannerIndex
   }
 
-  // Start a game with the given players, in the given play order.
-  function startGame(names: string[]) {
-    players.value = names.map((name) => ({ name, score: START_SCORE, lastThrows: [] }))
+  // Start a game with the given players (in play order) and options.
+  function startGame(config: { names: string[] } & GameOptions) {
+    options.value = { startScore: config.startScore, outMode: config.outMode }
+    players.value = config.names.map((name) => ({
+      name,
+      score: config.startScore,
+      lastThrows: [],
+    }))
     currentPlayerIndex.value = 0
     currentThrows.value = []
     finishOrder.value = []
@@ -163,6 +194,7 @@ export function useDartGame() {
 
   return {
     phase,
+    options,
     players,
     currentPlayerIndex,
     currentThrows,
