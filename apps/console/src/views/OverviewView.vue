@@ -26,14 +26,14 @@ const stageGroups = computed(() =>
 </script>
 
 <template>
-  <div v-if="detail" class="overview">
-    <header class="row" style="justify-content: space-between">
+  <div v-if="detail" class="overview pd-stack">
+    <header class="overview-heading pd-row">
       <h1>{{ detail.tournament.name }}</h1>
       <span :class="['dot', connected ? 'on' : 'off']">{{ connected ? 'live' : 'offline' }}</span>
     </header>
 
     <section v-if="liveMatches.length" class="live-grid">
-      <div v-for="m in liveMatches" :key="m.id" class="panel live-card">
+      <div v-for="m in liveMatches" :key="m.id" class="pd-panel live-card">
         <div
           v-for="pid in [m.participantAId, m.participantBId]"
           :key="pid ?? 'x'"
@@ -49,10 +49,10 @@ const stageGroups = computed(() =>
         </div>
       </div>
     </section>
-    <p v-else class="muted">No matches in progress.</p>
+    <p v-else class="pd-muted">No matches in progress.</p>
 
     <div class="columns">
-      <section class="panel stack">
+      <section class="pd-panel">
         <h2>Standings</h2>
         <table>
           <thead>
@@ -76,7 +76,7 @@ const stageGroups = computed(() =>
         </table>
       </section>
 
-      <section v-for="{ stage, matches } in stageGroups" :key="stage.id" class="panel stack">
+      <section v-for="{ stage, matches } in stageGroups" :key="stage.id" class="pd-panel">
         <h2>{{ stage.name }}</h2>
         <div v-for="m in matches" :key="m.id" class="match-row">
           <span :class="{ win: m.winnerId === m.participantAId }">{{
@@ -90,83 +90,102 @@ const stageGroups = computed(() =>
       </section>
     </div>
   </div>
-  <p v-else class="muted">Loading…</p>
+  <p v-else class="pd-muted">Loading…</p>
 </template>
 
 <style scoped>
 .overview {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  gap: var(--pd-space-5);
+}
+
+.overview-heading {
+  justify-content: space-between;
+  gap: var(--pd-space-3);
 }
 
 .dot {
-  font-size: 0.85rem;
-  padding: 0.2rem 0.6rem;
+  padding: 0.28rem 0.65rem;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--pd-border-strong);
+  color: var(--pd-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .dot.on {
-  color: var(--good);
-  border-color: var(--good);
+  border-color: var(--pd-success);
+  background: var(--pd-success-soft);
+  color: var(--pd-success);
 }
 .dot.off {
-  color: var(--bad);
-  border-color: var(--bad);
+  border-color: var(--pd-danger);
+  background: var(--pd-danger-soft);
+  color: var(--pd-danger);
 }
 
 .live-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1rem;
+  gap: var(--pd-space-4);
 }
 
 .live-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--pd-space-3);
+  border-color: rgba(34, 211, 238, 0.35);
+  background:
+    linear-gradient(145deg, rgba(34, 211, 238, 0.1), transparent 55%), var(--pd-surface-gradient);
 }
 
 .live-player {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: var(--pd-space-3);
 }
 
 .pname {
-  font-size: 1.4rem;
-  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pd-text-soft);
+  font-size: 1.15rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pscore {
-  font-size: 2.6rem;
-  font-weight: 800;
-  color: var(--accent);
+  color: var(--pd-accent);
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 850;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
 }
 
 .legs {
-  color: var(--muted);
+  padding-top: var(--pd-space-2);
+  border-top: 1px solid var(--pd-border);
+  color: var(--pd-text-muted);
   text-align: right;
 }
 
 .columns {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: var(--pd-space-4);
   align-items: start;
 }
 
 .match-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--border);
+  gap: var(--pd-space-2);
+  padding: var(--pd-space-2) 0;
+  border-bottom: 1px solid var(--pd-border);
 }
 
 .match-row .score {
-  color: var(--muted);
+  color: var(--pd-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -175,7 +194,14 @@ const stageGroups = computed(() =>
 }
 
 .win {
-  color: var(--good);
+  color: var(--pd-success);
   font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .live-grid,
+  .columns {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

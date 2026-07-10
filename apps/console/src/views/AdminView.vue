@@ -141,22 +141,26 @@ onUnmounted(() => feed.close())
 </script>
 
 <template>
-  <div class="stack">
+  <div class="admin pd-stack">
     <p v-if="error" class="error">{{ error }}</p>
 
-    <section class="panel stack">
+    <section class="pd-panel">
       <h2>Tournaments</h2>
-      <div class="row">
+      <div class="pd-row">
         <input v-model="newTournamentName" placeholder="New tournament name" />
-        <button class="primary" :disabled="!newTournamentName.trim()" @click="createTournament">
+        <button
+          class="pd-button--primary"
+          :disabled="!newTournamentName.trim()"
+          @click="createTournament"
+        >
           Create
         </button>
       </div>
-      <div class="row">
+      <div class="pd-row">
         <button
           v-for="t in tournaments"
           :key="t.id"
-          :class="{ primary: t.id === selectedId }"
+          :class="{ 'pd-button--primary': t.id === selectedId }"
           @click="select(t.id)"
         >
           {{ t.name }}
@@ -165,22 +169,24 @@ onUnmounted(() => feed.close())
     </section>
 
     <template v-if="detail">
-      <section class="panel stack">
+      <section class="pd-panel">
         <h3>Floors</h3>
-        <p class="muted">Each floor accepts one connected board as its scoring input device.</p>
-        <div v-if="detail.floors.length" class="row">
+        <p class="pd-muted">Each floor accepts one connected board as its scoring input device.</p>
+        <div v-if="detail.floors.length" class="pd-row">
           <span v-for="floor in detail.floors" :key="floor.id" class="floor-chip">
             {{ floor.name }}
-            <button @click="removeFloor(floor.id)">✕</button>
+            <button class="remove-button" aria-label="Remove floor" @click="removeFloor(floor.id)">
+              ✕
+            </button>
           </span>
         </div>
-        <div class="row">
+        <div class="pd-row">
           <input v-model="newFloorName" placeholder="Floor name" @keyup.enter="addFloor" />
           <button :disabled="!newFloorName.trim()" @click="addFloor">Add floor</button>
         </div>
       </section>
-      <section class="panel stack">
-        <div class="row" style="justify-content: space-between">
+      <section class="pd-panel">
+        <div class="section-heading pd-row">
           <h2>{{ detail.tournament.name }} · {{ detail.tournament.status }}</h2>
           <RouterLink :to="`/view/${detail.tournament.id}`" target="_blank">
             Open overview ↗
@@ -189,13 +195,19 @@ onUnmounted(() => feed.close())
 
         <h3>Players ({{ detail.participants.length }})</h3>
         <ul class="players">
-          <li v-for="p in detail.participants" :key="p.id" class="row">
+          <li v-for="p in detail.participants" :key="p.id" class="pd-row">
             <span>{{ p.name }}</span>
-            <span class="muted" v-if="p.seed">seed {{ p.seed }}</span>
-            <button @click="removeParticipant(p.id)">✕</button>
+            <span v-if="p.seed" class="pd-muted">seed {{ p.seed }}</span>
+            <button
+              class="remove-button"
+              aria-label="Remove player"
+              @click="removeParticipant(p.id)"
+            >
+              ✕
+            </button>
           </li>
         </ul>
-        <div class="row">
+        <div class="pd-row">
           <input
             v-model="newParticipant.name"
             placeholder="Player name"
@@ -206,15 +218,17 @@ onUnmounted(() => feed.close())
         </div>
       </section>
 
-      <section class="panel stack">
+      <section class="pd-panel">
         <h3>Add stage</h3>
-        <div class="row">
+        <div class="pd-row">
           <input v-model="newStage.name" placeholder="Stage name (e.g. Groups)" />
           <select v-model="newStage.type">
             <option value="group">Group (round-robin)</option>
             <option value="knockout">Knockout (single elim.)</option>
           </select>
-          <label class="row">Best of <input v-model="newStage.bestOf" style="width: 4rem" /></label>
+          <label class="pd-row"
+            >Best of <input v-model="newStage.bestOf" style="width: 4rem"
+          /></label>
           <select v-model="newStage.startScore">
             <option :value="301">301</option>
             <option :value="501">501</option>
@@ -225,20 +239,20 @@ onUnmounted(() => feed.close())
           </select>
           <button :disabled="!newStage.name.trim()" @click="createStage">Add stage</button>
         </div>
-        <div class="row muted">
-          <label class="row"
+        <div class="pd-row pd-muted">
+          <label class="pd-row"
             >Groups <input v-model="genOpts.groupCount" style="width: 4rem"
           /></label>
-          <label class="row">
+          <label class="pd-row">
             Qualifiers / group <input v-model="genOpts.qualifiersPerGroup" style="width: 4rem" />
           </label>
         </div>
       </section>
 
-      <section v-for="{ stage, matches } in stagesWithMatches" :key="stage.id" class="panel stack">
-        <div class="row" style="justify-content: space-between">
+      <section v-for="{ stage, matches } in stagesWithMatches" :key="stage.id" class="pd-panel">
+        <div class="section-heading pd-row">
           <h3>{{ stage.name }} · {{ stage.type }} · Bo{{ stage.bestOf }}</h3>
-          <button class="primary" @click="generate(stage.id, stage.type)">
+          <button class="pd-button--primary" @click="generate(stage.id, stage.type)">
             {{ matches.length ? 'Regenerate' : 'Generate' }}
           </button>
         </div>
@@ -283,7 +297,7 @@ onUnmounted(() => feed.close())
             </tr>
           </tbody>
         </table>
-        <p v-else class="muted">No matches yet — set players/options and Generate.</p>
+        <p v-else class="pd-muted">No matches yet — set players/options and Generate.</p>
       </section>
     </template>
   </div>
@@ -291,8 +305,21 @@ onUnmounted(() => feed.close())
 
 <style scoped>
 .error {
-  color: var(--bad);
+  padding: var(--pd-space-3) var(--pd-space-4);
+  border: 1px solid rgba(251, 113, 133, 0.45);
+  border-radius: var(--pd-radius);
+  background: var(--pd-danger-soft);
+  color: var(--pd-danger);
   margin: 0;
+}
+
+.admin {
+  gap: var(--pd-space-5);
+}
+
+.section-heading {
+  justify-content: space-between;
+  gap: var(--pd-space-3);
 }
 
 .players {
@@ -301,25 +328,48 @@ onUnmounted(() => feed.close())
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--pd-space-2);
 }
 
 .players li {
-  background: var(--panel-2);
-  border-radius: 8px;
-  padding: 0.25rem 0.5rem;
+  padding: var(--pd-space-1) var(--pd-space-2);
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius-sm);
+  background: var(--pd-surface-sunken);
 }
 
 .win {
-  color: var(--good);
+  color: var(--pd-success);
 }
 
 .floor-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: var(--panel-2);
-  border-radius: 8px;
-  padding: 0.25rem 0.5rem;
+  gap: var(--pd-space-2);
+  padding: var(--pd-space-1) var(--pd-space-2);
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius-sm);
+  background: var(--pd-surface-sunken);
+}
+
+.remove-button {
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pd-text-muted);
+  font-size: 1rem;
+}
+
+.remove-button:hover:not(:disabled) {
+  background: var(--pd-danger-soft);
+  color: var(--pd-danger);
+}
+
+@media (max-width: 640px) {
+  .section-heading {
+    align-items: flex-start;
+  }
 }
 </style>

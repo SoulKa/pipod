@@ -91,9 +91,7 @@ watch(
   },
 )
 
-const awaitingTournamentMatch = computed(
-  () => !!tour.floorId.value && !tournamentMode.value,
-)
+const awaitingTournamentMatch = computed(() => !!tour.floorId.value && !tournamentMode.value)
 
 // Record each dart, then mirror it to the server so overview screens update live.
 function handleThrow(base: number, multiplier: Multiplier) {
