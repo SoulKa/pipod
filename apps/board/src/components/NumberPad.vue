@@ -57,7 +57,9 @@ const hint = computed(() => {
 
 <template>
   <div class="pad">
-    <div class="hint" :class="{ armed: multiplier !== 1, checkout: showingCheckout }">{{ hint }}</div>
+    <div class="hint" :class="{ armed: multiplier !== 1, checkout: showingCheckout }">
+      {{ hint }}
+    </div>
 
     <div class="numbers">
       <button
@@ -142,7 +144,10 @@ const hint = computed(() => {
   border-radius: 16px;
   font-weight: 800;
   cursor: pointer;
-  transition: transform 0.05s ease, filter 0.1s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.05s ease,
+    filter 0.1s ease,
+    box-shadow 0.15s ease;
   touch-action: manipulation;
 }
 

@@ -14,11 +14,7 @@ export const repo = {
   },
 
   listParticipants(tournamentId: string): Participant[] {
-    return db
-      .select()
-      .from(participants)
-      .where(eq(participants.tournamentId, tournamentId))
-      .all()
+    return db.select().from(participants).where(eq(participants.tournamentId, tournamentId)).all()
   },
 
   listStages(tournamentId: string): Stage[] {

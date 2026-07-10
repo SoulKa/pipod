@@ -4,11 +4,7 @@ import { z } from 'zod'
 
 export const outModeSchema = z.enum(['single', 'double'])
 export const stageTypeSchema = z.enum(['group', 'knockout'])
-export const stageFormatSchema = z.enum([
-  'round_robin',
-  'single_elimination',
-  'double_elimination',
-])
+export const stageFormatSchema = z.enum(['round_robin', 'single_elimination', 'double_elimination'])
 
 /** 301 or 501, matching the board's selectable start scores. */
 export const startScoreSchema = z

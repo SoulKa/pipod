@@ -51,10 +51,7 @@ function subscribe() {
           >
             R{{ m.round + 1 }} · M{{ m.slot + 1 }}
           </button>
-          <span
-            v-if="!snapshot.matches.some((x) => x.status === 'ready')"
-            class="hint"
-          >
+          <span v-if="!snapshot.matches.some((x) => x.status === 'ready')" class="hint">
             none yet
           </span>
         </div>

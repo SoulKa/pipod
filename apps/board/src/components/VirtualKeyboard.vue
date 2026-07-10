@@ -63,12 +63,7 @@ function toggleShift() {
       <button v-for="d in NUMBERS" :key="d" class="key" @click="append(d)">{{ d }}</button>
     </div>
     <div v-for="(row, r) in ROWS" :key="r" class="kb-row">
-      <button
-        v-for="letter in row"
-        :key="letter"
-        class="key"
-        @click="pressLetter(letter)"
-      >
+      <button v-for="letter in row" :key="letter" class="key" @click="pressLetter(letter)">
         {{ upper ? letter.toUpperCase() : letter }}
       </button>
     </div>

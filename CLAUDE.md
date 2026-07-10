@@ -40,7 +40,7 @@ Game logic is deliberately kept out of the components, in framework-light module
   `continuePlaying`, and the `checkoutRoutes` computed. Constants: `THROWS_PER_TURN = 3`,
   `START_SCORES = [301, 501]`, `DEFAULT_OPTIONS`. `type OutMode = 'single' | 'double'`.
 - **`src/game/checkout.ts`** — pure checkout solver. `suggestCheckouts(score, dartsLeft,
-  outMode)` returns up to 3 `CheckoutRoute`s; `dartLabel()` formats a dart (`T20`, `D16`,
+outMode)` returns up to 3 `CheckoutRoute`s; `dartLabel()` formats a dart (`T20`, `D16`,
   `Bull`). No Vue dependency.
 - **`src/game/setupStorage.ts`** — `loadSetup()` / `saveSetup()` persist the roster
   (names + selected) and options to `localStorage` under key `pi-darts.setup.v1`. Defensive

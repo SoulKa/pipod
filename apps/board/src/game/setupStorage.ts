@@ -23,8 +23,9 @@ export function loadSetup(): StoredSetup | null {
     if (!data || !Array.isArray(data.roster)) return null
 
     const roster: StoredRosterEntry[] = data.roster
-      .filter((e: unknown): e is { name: string; selected?: unknown } =>
-        typeof (e as { name?: unknown })?.name === 'string',
+      .filter(
+        (e: unknown): e is { name: string; selected?: unknown } =>
+          typeof (e as { name?: unknown })?.name === 'string',
       )
       .map((e: { name: string; selected?: unknown }) => ({
         name: e.name,

@@ -13,14 +13,12 @@ import { setupRealtime } from './realtime'
 
 const app = await buildApp()
 
-const io = new Server<
-  ClientToServerEvents,
-  ServerToClientEvents,
-  InterServerEvents,
-  SocketData
->(app.server, {
-  cors: { origin: true },
-})
+const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(
+  app.server,
+  {
+    cors: { origin: true },
+  },
+)
 setupRealtime(io)
 
 await app.listen({ host: env.host, port: env.port })

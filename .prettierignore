@@ -1,0 +1,10 @@
+.yarn/
+apps/server/drizzle/
+coverage/
+data/
+dist/
+node_modules/
+yarn.lock
+*.db
+*.db-shm
+*.db-wal

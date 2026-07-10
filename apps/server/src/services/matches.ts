@@ -31,9 +31,7 @@ export function advanceWinner(match: Match): Match[] {
   if (!next) return []
 
   const patch =
-    match.nextSlot === 'a'
-      ? { participantAId: match.winnerId }
-      : { participantBId: match.winnerId }
+    match.nextSlot === 'a' ? { participantAId: match.winnerId } : { participantBId: match.winnerId }
   const bothSet =
     (match.nextSlot === 'a' ? match.winnerId : next.participantAId) &&
     (match.nextSlot === 'b' ? match.winnerId : next.participantBId)
@@ -61,10 +59,7 @@ export function resolveByes(stageId: string): Match[] {
       const hasB = !!m.participantBId
       if (hasA === hasB) continue // both or neither present — not a bye
       const winnerId = (m.participantAId ?? m.participantBId)!
-      db.update(matches)
-        .set({ status: 'completed', winnerId })
-        .where(eq(matches.id, m.id))
-        .run()
+      db.update(matches).set({ status: 'completed', winnerId }).where(eq(matches.id, m.id)).run()
       const completed = repo.getMatch(m.id)!
       changed.push(completed, ...advanceWinner(completed))
       progressed = true
@@ -105,7 +100,8 @@ export function reportLeg(
   const legsB = match.legsB + (winnerId === match.participantBId ? 1 : 0)
   const need = legsToWin(match.bestOf)
   const decided = legsA >= need || legsB >= need
-  const matchWinner = legsA >= need ? match.participantAId : legsB >= need ? match.participantBId : null
+  const matchWinner =
+    legsA >= need ? match.participantAId : legsB >= need ? match.participantBId : null
 
   db.update(matches)
     .set({

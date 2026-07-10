@@ -88,7 +88,9 @@ const gridStyle = computed(() => ({
         >
           {{ throwsFor(index)[slot] ? throwLabel(throwsFor(index)[slot]!) : '' }}
         </span>
-        <span v-if="throwsFor(index).length" class="turn-total">= {{ sumOf(throwsFor(index)) }}</span>
+        <span v-if="throwsFor(index).length" class="turn-total"
+          >= {{ sumOf(throwsFor(index)) }}</span
+        >
       </div>
     </div>
   </div>
@@ -114,7 +116,10 @@ const gridStyle = computed(() => ({
   border: 2px solid rgba(148, 163, 184, 0.12);
   padding: 14px 18px;
   overflow: hidden;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
 /* accent stripe down the left edge */
@@ -131,7 +136,9 @@ const gridStyle = computed(() => ({
 
 .card.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), 0 0 30px -6px var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 30px -6px var(--accent);
   transform: translateY(-2px);
 }
 

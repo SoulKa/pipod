@@ -152,7 +152,11 @@ onUnmounted(() => feed.close())
           </li>
         </ul>
         <div class="row">
-          <input v-model="newParticipant.name" placeholder="Player name" @keyup.enter="addParticipant" />
+          <input
+            v-model="newParticipant.name"
+            placeholder="Player name"
+            @keyup.enter="addParticipant"
+          />
           <input v-model="newParticipant.seed" placeholder="Seed" style="width: 6rem" />
           <button :disabled="!newParticipant.name.trim()" @click="addParticipant">Add</button>
         </div>
@@ -178,7 +182,9 @@ onUnmounted(() => feed.close())
           <button :disabled="!newStage.name.trim()" @click="createStage">Add stage</button>
         </div>
         <div class="row muted">
-          <label class="row">Groups <input v-model="genOpts.groupCount" style="width: 4rem" /></label>
+          <label class="row"
+            >Groups <input v-model="genOpts.groupCount" style="width: 4rem"
+          /></label>
           <label class="row">
             Qualifiers / group <input v-model="genOpts.qualifiersPerGroup" style="width: 4rem" />
           </label>
@@ -205,13 +211,15 @@ onUnmounted(() => feed.close())
             <tr v-for="m in matches" :key="m.id">
               <td>{{ m.round + 1 }}</td>
               <td>
-                <strong :class="{ win: m.winnerId === m.participantAId }">{{ nameOf(m.participantAId) }}</strong>
+                <strong :class="{ win: m.winnerId === m.participantAId }">{{
+                  nameOf(m.participantAId)
+                }}</strong>
                 vs
-                <strong :class="{ win: m.winnerId === m.participantBId }">{{ nameOf(m.participantBId) }}</strong>
+                <strong :class="{ win: m.winnerId === m.participantBId }">{{
+                  nameOf(m.participantBId)
+                }}</strong>
               </td>
-              <td>
-                {{ live.get(m.id)?.legsA ?? m.legsA }}–{{ live.get(m.id)?.legsB ?? m.legsB }}
-              </td>
+              <td>{{ live.get(m.id)?.legsA ?? m.legsA }}–{{ live.get(m.id)?.legsB ?? m.legsB }}</td>
               <td>{{ m.status }}</td>
             </tr>
           </tbody>

@@ -29,7 +29,8 @@ function loadPersisted(): Persisted {
     const parsed = JSON.parse(raw) as Partial<Persisted>
     return {
       serverUrl: typeof parsed.serverUrl === 'string' ? parsed.serverUrl : '',
-      boardId: typeof parsed.boardId === 'string' && parsed.boardId ? parsed.boardId : fallback.boardId,
+      boardId:
+        typeof parsed.boardId === 'string' && parsed.boardId ? parsed.boardId : fallback.boardId,
       boardName: typeof parsed.boardName === 'string' ? parsed.boardName : '',
     }
   } catch {

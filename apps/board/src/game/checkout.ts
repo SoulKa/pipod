@@ -86,8 +86,7 @@ export function suggestCheckouts(
   const minFinish = outMode === 'double' ? 2 : 1
   if (dartsLeft < 1 || score < minFinish || score > MAX_DART * dartsLeft) return []
 
-  const finishingDarts =
-    outMode === 'double' ? DART_OPTIONS.filter(isDouble) : DART_OPTIONS
+  const finishingDarts = outMode === 'double' ? DART_OPTIONS.filter(isDouble) : DART_OPTIONS
 
   interface Ranked {
     darts: DartThrow[]

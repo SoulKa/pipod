@@ -41,9 +41,7 @@ export function setupRealtime(io: IoServer): void {
     socket.on('match:claim', ({ matchId }) => {
       try {
         const match = claimMatch(matchId)
-        const names = new Map(
-          repo.listParticipants(match.tournamentId).map((p) => [p.id, p.name]),
-        )
+        const names = new Map(repo.listParticipants(match.tournamentId).map((p) => [p.id, p.name]))
         const participants = [match.participantAId, match.participantBId]
           .filter((id): id is string => !!id)
           .map((id) => ({ id, name: names.get(id) ?? 'Unknown' }))

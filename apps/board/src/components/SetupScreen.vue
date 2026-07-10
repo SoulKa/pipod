@@ -214,7 +214,6 @@ function start() {
           {{ p.name }}
         </button>
       </div>
-
     </section>
 
     <button class="start" :disabled="!canStart" @click="start">{{ startLabel }}</button>
@@ -252,10 +251,18 @@ function start() {
         <div class="option">
           <span class="option-label">Out mode</span>
           <div class="segmented">
-            <button class="seg" :class="{ active: outMode === 'single' }" @click="outMode = 'single'">
+            <button
+              class="seg"
+              :class="{ active: outMode === 'single' }"
+              @click="outMode = 'single'"
+            >
               Single out
             </button>
-            <button class="seg" :class="{ active: outMode === 'double' }" @click="outMode = 'double'">
+            <button
+              class="seg"
+              :class="{ active: outMode === 'double' }"
+              @click="outMode = 'double'"
+            >
               Double out
             </button>
           </div>

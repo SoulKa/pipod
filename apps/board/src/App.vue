@@ -122,7 +122,9 @@ function confirmNewGame() {
   confirmingNewGame.value = false
 }
 
-const outModeLabel = computed(() => (options.value.outMode === 'double' ? 'double out' : 'single out'))
+const outModeLabel = computed(() =>
+  options.value.outMode === 'double' ? 'double out' : 'single out',
+)
 
 const justFinishedName = computed(() =>
   bannerIndex.value === null ? '' : (players.value[bannerIndex.value]?.name ?? ''),
@@ -187,7 +189,9 @@ const justFinishedPlace = computed(() =>
         </template>
 
         <div class="modal-actions">
-          <button v-if="!isGameOver" class="primary" @click="continuePlaying">Continue Playing</button>
+          <button v-if="!isGameOver" class="primary" @click="continuePlaying">
+            Continue Playing
+          </button>
           <button v-if="isGameOver && tournamentMode" class="primary" @click="reportLegAndContinue">
             Report result to server →
           </button>

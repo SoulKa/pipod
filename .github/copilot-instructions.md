@@ -14,6 +14,8 @@ yarn dev:console      # tournament-console Vite app
 yarn dev:server       # Fastify + Socket.IO server
 yarn type-check       # all workspaces; primary automated check
 yarn build            # type-check, then build the board and console
+yarn format           # format supported source and config files
+yarn format:check     # verify formatting without changes
 yarn preview:board
 yarn preview:console
 yarn start:server
@@ -60,7 +62,7 @@ or `yarn workspace @pi-darts/shared type-check`.
 ## Conventions & constraints
 
 - Follow the existing style: `<script setup lang="ts">`, composition API, dark slate/cyan
-  theme, and comments that explain *why*.
+  theme, and comments that explain _why_.
 - Board interactions are touchscreen-first: retain comfortable 44–48px minimum tap targets and
   use the on-screen keyboard for player names.
 - Keep board scoring logic framework-light and UI-agnostic in `apps/board/src/game`; components

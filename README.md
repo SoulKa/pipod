@@ -51,6 +51,13 @@ yarn dev:server
 yarn type-check
 ```
 
+### Format
+
+```sh
+yarn format
+yarn format:check
+```
+
 ### Build for production
 
 ```sh

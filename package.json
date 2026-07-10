@@ -18,7 +18,12 @@
     "preview:console": "yarn workspace @pi-darts/console preview",
     "start:server": "yarn workspace @pi-darts/server start",
     "build": "yarn type-check && yarn workspace @pi-darts/board build-only && yarn workspace @pi-darts/console build-only",
-    "type-check": "yarn workspace @pi-darts/shared type-check && yarn workspace @pi-darts/server type-check && yarn workspace @pi-darts/board type-check && yarn workspace @pi-darts/console type-check"
+    "type-check": "yarn workspace @pi-darts/shared type-check && yarn workspace @pi-darts/server type-check && yarn workspace @pi-darts/board type-check && yarn workspace @pi-darts/console type-check",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown"
+  },
+  "devDependencies": {
+    "prettier": "3.9.5"
   },
   "packageManager": "yarn@4.17.1"
 }

@@ -51,9 +51,6 @@ export function computeStandings(participantIds: string[], matches: Match[]): St
 
   const rows = [...table.values()]
   for (const s of rows) s.legDiff = s.legsFor - s.legsAgainst
-  rows.sort(
-    (x, y) =>
-      y.points - x.points || y.legDiff - x.legDiff || y.legsFor - x.legsFor,
-  )
+  rows.sort((x, y) => y.points - x.points || y.legDiff - x.legDiff || y.legsFor - x.legsFor)
   return rows
 }

@@ -15,9 +15,7 @@ const nameOf = computed(() => {
   return (id: string | null) => (id ? (map.get(id) ?? '—') : '—')
 })
 
-const liveMatches = computed(() =>
-  (detail.value?.matches ?? []).filter((m) => m.status === 'live'),
-)
+const liveMatches = computed(() => (detail.value?.matches ?? []).filter((m) => m.status === 'live'))
 
 const stageGroups = computed(() =>
   (detail.value?.stages ?? []).map((stage) => ({
@@ -81,9 +79,13 @@ const stageGroups = computed(() =>
       <section v-for="{ stage, matches } in stageGroups" :key="stage.id" class="panel stack">
         <h2>{{ stage.name }}</h2>
         <div v-for="m in matches" :key="m.id" class="match-row">
-          <span :class="{ win: m.winnerId === m.participantAId }">{{ nameOf(m.participantAId) }}</span>
+          <span :class="{ win: m.winnerId === m.participantAId }">{{
+            nameOf(m.participantAId)
+          }}</span>
           <span class="score">{{ m.legsA }}–{{ m.legsB }}</span>
-          <span :class="{ win: m.winnerId === m.participantBId }">{{ nameOf(m.participantBId) }}</span>
+          <span :class="{ win: m.winnerId === m.participantBId }">{{
+            nameOf(m.participantBId)
+          }}</span>
         </div>
       </section>
     </div>

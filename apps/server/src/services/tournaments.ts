@@ -2,13 +2,7 @@
 // schedule/bracket generation that turns a stage into concrete matches.
 import { nanoid } from 'nanoid'
 import { eq, inArray } from 'drizzle-orm'
-import type {
-  CreateStageInput,
-  Match,
-  Participant,
-  Stage,
-  Tournament,
-} from '@pi-darts/shared'
+import type { CreateStageInput, Match, Participant, Stage, Tournament } from '@pi-darts/shared'
 import { db } from '../db/client'
 import { groupMembers, groups, matches, participants, stages, tournaments } from '../db/schema'
 import { repo } from '../repo'
@@ -112,7 +106,12 @@ function clearStage(stageId: string): void {
   const existingGroups = repo.listGroups(stageId)
   if (existingGroups.length) {
     db.delete(groupMembers)
-      .where(inArray(groupMembers.groupId, existingGroups.map((g) => g.id)))
+      .where(
+        inArray(
+          groupMembers.groupId,
+          existingGroups.map((g) => g.id),
+        ),
+      )
       .run()
     db.delete(groups).where(eq(groups.stageId, stageId)).run()
   }

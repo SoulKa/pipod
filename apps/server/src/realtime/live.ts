@@ -7,9 +7,7 @@ const live = new Map<string, LiveMatchState>()
 
 /** Begin (or restart) live tracking for a match at a fresh leg. */
 export function startLive(match: Match): LiveMatchState {
-  const ids = [match.participantAId, match.participantBId].filter(
-    (id): id is string => !!id,
-  )
+  const ids = [match.participantAId, match.participantBId].filter((id): id is string => !!id)
   const state: LiveMatchState = {
     matchId: match.id,
     legIndex: match.legsA + match.legsB,
