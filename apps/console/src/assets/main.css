@@ -16,11 +16,11 @@
   min-height: 4.5rem;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem clamp(1rem, 3vw, 2.5rem);
+  gap: var(--pd-space-4);
+  padding: var(--pd-space-3) clamp(var(--pd-space-4), 2.5vw, var(--pd-space-6));
   border-bottom: 1px solid var(--pd-border);
-  background: rgba(11, 18, 32, 0.86);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  background: var(--pd-bg-subtle);
+  box-shadow: var(--pd-shadow-sm);
   backdrop-filter: blur(16px);
 }
 
@@ -32,11 +32,15 @@
   text-decoration: none;
 }
 
+.console-nav {
+  flex-wrap: nowrap;
+}
+
 .console-nav a {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
-  padding: 0.45rem 0.75rem;
+  padding: var(--pd-space-2) var(--pd-space-3);
   border-radius: var(--pd-radius-sm);
   color: var(--pd-text-muted);
   text-decoration: none;
@@ -49,14 +53,29 @@
 }
 
 .console-content {
-  width: min(100%, 1280px);
+  width: min(100%, 120rem);
   flex: 1;
   margin: 0 auto;
-  padding: clamp(1rem, 3vw, 2.5rem);
+  padding: clamp(var(--pd-space-4), 2vw, var(--pd-space-6));
 }
 
-@media (max-width: 640px) {
+@media (min-width: 75rem) and (min-height: 43rem) {
+  .console-content {
+    min-height: calc(100vh - 4.5rem);
+  }
+}
+
+@media (max-width: 40rem) {
   .console-topbar {
     min-height: 4rem;
+    padding-inline: var(--pd-space-4);
+  }
+
+  .console-brand {
+    font-size: 0.95rem;
+  }
+
+  .console-content {
+    padding: var(--pd-space-4);
   }
 }
