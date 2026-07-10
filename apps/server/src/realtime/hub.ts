@@ -31,6 +31,10 @@ export function roomFor(tournamentId: string): string {
   return `tournament:${tournamentId}`
 }
 
+export function floorRoomFor(tournamentId: string, floorId: string): string {
+  return `floor:${tournamentId}:${floorId}`
+}
+
 /** Assemble the full state of a tournament for subscribers. */
 export function buildSnapshot(tournamentId: string): TournamentSnapshot | null {
   const tournament = repo.getTournament(tournamentId)
@@ -38,7 +42,7 @@ export function buildSnapshot(tournamentId: string): TournamentSnapshot | null {
   const matches = repo.listMatches(tournamentId)
   const participantIds = repo.listParticipants(tournamentId).map((p) => p.id)
   const standings = computeStandings(participantIds, matches)
-  return { tournament, matches, standings }
+  return { tournament, floors: repo.listFloors(tournamentId), matches, standings }
 }
 
 export function broadcastSnapshot(tournamentId: string): void {

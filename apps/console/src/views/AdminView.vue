@@ -11,6 +11,7 @@ const selectedId = ref<string | null>(null)
 const error = ref('')
 
 const newTournamentName = ref('')
+const newFloorName = ref('')
 const newParticipant = reactive({ name: '', seed: '' })
 const newStage = reactive({
   name: '',
@@ -45,6 +46,10 @@ const nameOf = computed(() => {
   const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p.name]))
   return (id: string | null) => (id ? (map.get(id) ?? '—') : '—')
 })
+const floorNameOf = computed(() => {
+  const map = new Map((detail.value?.floors ?? []).map((floor) => [floor.id, floor.name]))
+  return (id: string | null) => (id ? (map.get(id) ?? '—') : 'Unassigned')
+})
 
 const stagesWithMatches = computed(() =>
   (detail.value?.stages ?? []).map((stage) => ({
@@ -69,6 +74,31 @@ async function addParticipant() {
     await api.addParticipant(selectedId.value!, { name: newParticipant.name.trim(), seed })
     newParticipant.name = ''
     newParticipant.seed = ''
+  })
+}
+
+async function addFloor() {
+  if (!selectedId.value) return
+  await run(async () => {
+    await api.createFloor(selectedId.value!, newFloorName.value.trim())
+    newFloorName.value = ''
+    await feed.refresh()
+  })
+}
+
+async function removeFloor(id: string) {
+  await run(async () => {
+    await api.deleteFloor(id)
+    await feed.refresh()
+  })
+}
+
+async function assignFloor(matchId: string, event: Event) {
+  const floorId = (event.target as HTMLSelectElement).value
+  if (!floorId) return
+  await run(async () => {
+    await api.assignMatchFloor(matchId, floorId)
+    await feed.refresh()
   })
 }
 
@@ -135,6 +165,20 @@ onUnmounted(() => feed.close())
     </section>
 
     <template v-if="detail">
+      <section class="panel stack">
+        <h3>Floors</h3>
+        <p class="muted">Each floor accepts one connected board as its scoring input device.</p>
+        <div v-if="detail.floors.length" class="row">
+          <span v-for="floor in detail.floors" :key="floor.id" class="floor-chip">
+            {{ floor.name }}
+            <button @click="removeFloor(floor.id)">✕</button>
+          </span>
+        </div>
+        <div class="row">
+          <input v-model="newFloorName" placeholder="Floor name" @keyup.enter="addFloor" />
+          <button :disabled="!newFloorName.trim()" @click="addFloor">Add floor</button>
+        </div>
+      </section>
       <section class="panel stack">
         <div class="row" style="justify-content: space-between">
           <h2>{{ detail.tournament.name }} · {{ detail.tournament.status }}</h2>
@@ -204,6 +248,7 @@ onUnmounted(() => feed.close())
               <th>R</th>
               <th>Match</th>
               <th>Legs</th>
+              <th>Floor</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -220,6 +265,20 @@ onUnmounted(() => feed.close())
                 }}</strong>
               </td>
               <td>{{ live.get(m.id)?.legsA ?? m.legsA }}–{{ live.get(m.id)?.legsB ?? m.legsB }}</td>
+              <td>
+                <select
+                  v-if="m.status === 'ready'"
+                  :value="m.floorId ?? ''"
+                  :disabled="!detail.floors.length"
+                  @change="assignFloor(m.id, $event)"
+                >
+                  <option value="">Assign floor</option>
+                  <option v-for="floor in detail.floors" :key="floor.id" :value="floor.id">
+                    {{ floor.name }}
+                  </option>
+                </select>
+                <span v-else>{{ floorNameOf(m.floorId) }}</span>
+              </td>
               <td>{{ m.status }}</td>
             </tr>
           </tbody>
@@ -253,5 +312,14 @@ onUnmounted(() => feed.close())
 
 .win {
   color: var(--good);
+}
+
+.floor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 0.25rem 0.5rem;
 }
 </style>

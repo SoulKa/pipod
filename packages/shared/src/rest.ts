@@ -17,6 +17,16 @@ export const createTournamentSchema = z.object({
 })
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>
 
+export const createFloorSchema = z.object({
+  name: z.string().min(1).max(60),
+})
+export type CreateFloorInput = z.infer<typeof createFloorSchema>
+
+export const assignMatchFloorSchema = z.object({
+  floorId: z.string().min(1),
+})
+export type AssignMatchFloorInput = z.infer<typeof assignMatchFloorSchema>
+
 export const addParticipantSchema = z.object({
   name: z.string().min(1).max(60),
   seed: z.number().int().positive().nullable().optional(),

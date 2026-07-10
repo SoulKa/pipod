@@ -2,9 +2,24 @@
 // schedule/bracket generation that turns a stage into concrete matches.
 import { nanoid } from 'nanoid'
 import { eq, inArray } from 'drizzle-orm'
-import type { CreateStageInput, Match, Participant, Stage, Tournament } from '@pi-darts/shared'
+import type {
+  CreateStageInput,
+  Floor,
+  Match,
+  Participant,
+  Stage,
+  Tournament,
+} from '@pi-darts/shared'
 import { db } from '../db/client'
-import { groupMembers, groups, matches, participants, stages, tournaments } from '../db/schema'
+import {
+  floors,
+  groupMembers,
+  groups,
+  matches,
+  participants,
+  stages,
+  tournaments,
+} from '../db/schema'
 import { repo } from '../repo'
 import { computeStandings, generateRoundRobin, generateSingleElimination } from '../engine'
 import { resolveByes } from './matches'
@@ -18,6 +33,21 @@ export function createTournament(name: string): Tournament {
   }
   db.insert(tournaments).values(row).run()
   return row
+}
+
+export function createFloor(tournamentId: string, name: string): Floor {
+  const row: Floor = { id: nanoid(), tournamentId, name }
+  db.insert(floors).values(row).run()
+  return row
+}
+
+export function deleteFloor(floorId: string): void {
+  const floor = repo.getFloor(floorId)
+  if (!floor) throw new Error('floor not found')
+  if (repo.listMatches(floor.tournamentId).some((match) => match.floorId === floorId)) {
+    throw new Error('cannot remove a floor assigned to a match')
+  }
+  db.delete(floors).where(eq(floors.id, floorId)).run()
 }
 
 export function addParticipant(
@@ -217,6 +247,7 @@ function insertMatch(
       bestOf: stage.bestOf,
       startScore: stage.startScore,
       outMode: stage.outMode,
+      floorId: null,
       status: fields.status,
       legsA: 0,
       legsB: 0,

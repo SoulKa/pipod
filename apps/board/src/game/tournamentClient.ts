@@ -5,10 +5,11 @@ import { ref, shallowRef } from 'vue'
 import { io, type Socket } from 'socket.io-client'
 import type {
   ClientToServerEvents,
+  Floor,
   MatchAssignment,
   Multiplier,
   ServerToClientEvents,
-  TournamentSnapshot,
+  Tournament,
 } from '@pi-darts/shared'
 
 type BoardSocket = Socket<ServerToClientEvents, ClientToServerEvents>
@@ -18,11 +19,17 @@ const STORAGE_KEY = 'pi-darts.tournament.v1'
 interface Persisted {
   serverUrl: string
   boardId: string
-  boardName: string
+  tournamentId: string
+  floorId: string
 }
 
 function loadPersisted(): Persisted {
-  const fallback: Persisted = { serverUrl: '', boardId: crypto.randomUUID(), boardName: '' }
+  const fallback: Persisted = {
+    serverUrl: '',
+    boardId: crypto.randomUUID(),
+    tournamentId: '',
+    floorId: '',
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return fallback
@@ -31,7 +38,8 @@ function loadPersisted(): Persisted {
       serverUrl: typeof parsed.serverUrl === 'string' ? parsed.serverUrl : '',
       boardId:
         typeof parsed.boardId === 'string' && parsed.boardId ? parsed.boardId : fallback.boardId,
-      boardName: typeof parsed.boardName === 'string' ? parsed.boardName : '',
+      tournamentId: typeof parsed.tournamentId === 'string' ? parsed.tournamentId : '',
+      floorId: typeof parsed.floorId === 'string' ? parsed.floorId : '',
     }
   } catch {
     return fallback
@@ -44,8 +52,10 @@ const socket = shallowRef<BoardSocket | null>(null)
 const connected = ref(false)
 const serverUrl = ref(initial.serverUrl)
 const boardId = ref(initial.boardId)
-const boardName = ref(initial.boardName)
-const snapshot = ref<TournamentSnapshot | null>(null)
+const tournaments = ref<Tournament[]>([])
+const tournamentId = ref(initial.tournamentId)
+const floors = ref<Floor[]>([])
+const floorId = ref(initial.floorId)
 const assignment = ref<MatchAssignment | null>(null)
 const errorMsg = ref('')
 
@@ -53,7 +63,8 @@ function persist(): void {
   const data: Persisted = {
     serverUrl: serverUrl.value,
     boardId: boardId.value,
-    boardName: boardName.value,
+    tournamentId: tournamentId.value,
+    floorId: floorId.value,
   }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -62,8 +73,64 @@ function persist(): void {
   }
 }
 
-function connect(url: string): void {
-  serverUrl.value = url.trim()
+function normalizeServerUrl(host: string): string {
+  const value = host.trim().replace(/\/+$/, '')
+  if (!value) return ''
+  const url = new URL(/^https?:\/\//i.test(value) ? value : `http://${value}`)
+  if (!url.port) url.port = '3000'
+  return url.toString().replace(/\/$/, '')
+}
+
+async function loadTournaments(): Promise<void> {
+  if (!serverUrl.value) return
+  const response = await fetch(`${serverUrl.value}/api/tournaments`)
+  if (!response.ok) throw new Error('could not load tournaments from this host')
+  tournaments.value = (await response.json()) as Tournament[]
+}
+
+async function selectTournament(id: string, preserveFloor = false): Promise<void> {
+  tournamentId.value = id
+  if (!preserveFloor) floorId.value = ''
+  floors.value = []
+  assignment.value = null
+  persist()
+  if (!serverUrl.value || !id) return
+  const response = await fetch(`${serverUrl.value}/api/tournaments/${id}`)
+  if (!response.ok) {
+    errorMsg.value = 'could not load tournament floors'
+    throw new Error(errorMsg.value)
+  }
+  const detail = (await response.json()) as { floors: Floor[] }
+  floors.value = detail.floors
+}
+
+function registerFloor(): void {
+  if (!socket.value || !tournamentId.value || !floorId.value) return
+  socket.value.emit('board:register', {
+    boardId: boardId.value,
+    tournamentId: tournamentId.value,
+    floorId: floorId.value,
+  })
+  persist()
+}
+
+function selectFloor(id: string): void {
+  floorId.value = id
+  assignment.value = null
+  registerFloor()
+}
+
+function connect(host: string): void {
+  try {
+    serverUrl.value = normalizeServerUrl(host)
+  } catch {
+    errorMsg.value = 'enter a valid host IP or server URL'
+    return
+  }
+  if (!serverUrl.value) {
+    errorMsg.value = 'enter a host IP or server URL'
+    return
+  }
   persist()
   socket.value?.disconnect()
 
@@ -73,13 +140,17 @@ function connect(url: string): void {
   s.on('connect', () => {
     connected.value = true
     errorMsg.value = ''
-    s.emit('board:register', { boardId: boardId.value, name: boardName.value || undefined })
+    void loadTournaments()
+      .then(() => {
+        if (tournamentId.value) return selectTournament(tournamentId.value, true)
+      })
+      .then(() => registerFloor())
+      .catch((err: unknown) => {
+        errorMsg.value = err instanceof Error ? err.message : 'could not load tournaments'
+      })
   })
   s.on('disconnect', () => {
     connected.value = false
-  })
-  s.on('tournament:state', (snap) => {
-    snapshot.value = snap
   })
   s.on('match:assigned', (a) => {
     assignment.value = a
@@ -93,14 +164,6 @@ function disconnect(): void {
   socket.value?.disconnect()
   socket.value = null
   connected.value = false
-}
-
-function subscribe(tournamentId: string): void {
-  socket.value?.emit('tournament:subscribe', { tournamentId })
-}
-
-function claim(matchId: string): void {
-  socket.value?.emit('match:claim', { matchId, boardId: boardId.value })
 }
 
 function reportThrow(participantId: string, base: number, multiplier: Multiplier): void {
@@ -124,14 +187,17 @@ export function useTournamentClient() {
     connected,
     serverUrl,
     boardId,
-    boardName,
-    snapshot,
+    tournaments,
+    tournamentId,
+    floors,
+    floorId,
     assignment,
     errorMsg,
     connect,
     disconnect,
-    subscribe,
-    claim,
+    loadTournaments,
+    selectTournament,
+    selectFloor,
     reportThrow,
     reportLegResult,
     clearAssignment,

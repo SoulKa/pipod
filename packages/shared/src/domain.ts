@@ -47,6 +47,13 @@ export interface Participant {
   seed: number | null
 }
 
+/** A named physical playing area with exactly one connected scoring board. */
+export interface Floor {
+  id: string
+  tournamentId: string
+  name: string
+}
+
 export interface Stage {
   id: string
   tournamentId: string
@@ -87,6 +94,8 @@ export interface Match {
   bestOf: number
   startScore: number
   outMode: OutMode
+  /** Physical floor selected by the console; null until the match is assigned. */
+  floorId: string | null
   status: MatchStatus
   /** Legs won by A / B so far. */
   legsA: number

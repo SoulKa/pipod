@@ -27,6 +27,16 @@ export const participants = sqliteTable(
   (table) => [index('idx_participants_tournament').on(table.tournamentId)],
 )
 
+export const floors = sqliteTable(
+  'floors',
+  {
+    id: text('id').primaryKey(),
+    tournamentId: text('tournament_id').notNull(),
+    name: text('name').notNull(),
+  },
+  (table) => [index('idx_floors_tournament').on(table.tournamentId)],
+)
+
 export const stages = sqliteTable(
   'stages',
   {
@@ -68,6 +78,7 @@ export const matches = sqliteTable(
     bestOf: integer('best_of').notNull(),
     startScore: integer('start_score').notNull(),
     outMode: text('out_mode').$type<OutMode>().notNull(),
+    floorId: text('floor_id'),
     status: text('status').$type<MatchStatus>().notNull().default('pending'),
     legsA: integer('legs_a').notNull().default(0),
     legsB: integer('legs_b').notNull().default(0),
@@ -78,6 +89,7 @@ export const matches = sqliteTable(
   (table) => [
     index('idx_matches_tournament').on(table.tournamentId),
     index('idx_matches_stage').on(table.stageId),
+    index('idx_matches_floor').on(table.floorId),
   ],
 )
 

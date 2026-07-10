@@ -4,6 +4,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import {
   addParticipantSchema,
+  assignMatchFloorSchema,
+  createFloorSchema,
   createStageSchema,
   createTournamentSchema,
   reportLegSchema,
@@ -14,12 +16,15 @@ import {
   addParticipant,
   createStage,
   createTournament,
+  createFloor,
+  deleteFloor,
   deleteParticipant,
   generateStage,
   updateParticipant,
 } from '../services/tournaments'
-import { claimMatch, reportLeg } from '../services/matches'
+import { assignMatchFloor, claimMatch, reportLeg } from '../services/matches'
 import { broadcastMatch, broadcastSnapshot } from '../realtime/hub'
+import { dispatchFloorMatch } from '../realtime'
 
 /** Options accepted by the stage-generate endpoint. */
 const generateOptsSchema = z.object({
@@ -44,6 +49,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const stages = repo.listStages(id)
     return {
       tournament,
+      floors: repo.listFloors(id),
       participants: repo.listParticipants(id),
       stages,
       matches: repo.listMatches(id),
@@ -65,6 +71,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const participant = addParticipant(id, name, seed ?? null)
     broadcastSnapshot(id)
     return reply.code(201).send(participant)
+  })
+
+  app.post('/api/tournaments/:id/floors', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    if (!repo.getTournament(id)) return reply.code(404).send({ error: 'not found' })
+    const { name } = createFloorSchema.parse(req.body)
+    const floor = createFloor(id, name)
+    broadcastSnapshot(id)
+    return reply.code(201).send(floor)
+  })
+
+  app.delete('/api/floors/:id', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    try {
+      const tournamentId = repo.getFloor(id)?.tournamentId
+      deleteFloor(id)
+      if (tournamentId) broadcastSnapshot(tournamentId)
+      return { ok: true }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
   })
 
   app.patch('/api/participants/:id', async (req) => {
@@ -112,6 +139,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const match = claimMatch(id)
       broadcastMatch(match)
       broadcastSnapshot(match.tournamentId)
+      return match
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  app.post('/api/matches/:id/floor', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { floorId } = assignMatchFloorSchema.parse(req.body)
+    try {
+      const assigned = assignMatchFloor(id, floorId)
+      const match = dispatchFloorMatch(assigned) ?? assigned
+      if (match === assigned) {
+        broadcastMatch(match)
+        broadcastSnapshot(match.tournamentId)
+      }
       return match
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })

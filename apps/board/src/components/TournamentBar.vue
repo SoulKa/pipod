@@ -5,18 +5,27 @@ import { useTournamentClient } from '../game/tournamentClient'
 // Compact panel shown on the setup screen for joining a server-hosted tournament.
 // Purely additive — ignoring it leaves the board in normal offline mode.
 const client = useTournamentClient()
-const { connected, serverUrl, boardName, snapshot, errorMsg } = client
+const { connected, serverUrl, tournaments, tournamentId, floors, floorId, assignment, errorMsg } =
+  client
 
 const urlInput = ref(serverUrl.value)
-const tournamentId = ref('')
 const expanded = ref(false)
 
 function connect() {
   client.connect(urlInput.value)
 }
 
-function subscribe() {
-  if (tournamentId.value.trim()) client.subscribe(tournamentId.value.trim())
+async function chooseTournament(event: Event) {
+  try {
+    await client.selectTournament((event.target as HTMLSelectElement).value)
+  } catch (err) {
+    // The client surfaces fetch errors in the panel without interrupting offline scoring.
+    void err
+  }
+}
+
+function chooseFloor(event: Event) {
+  client.selectFloor((event.target as HTMLSelectElement).value)
 }
 </script>
 
@@ -28,34 +37,28 @@ function subscribe() {
 
     <div v-if="expanded" class="body">
       <div class="line">
-        <input v-model="urlInput" placeholder="http://server-ip:3000" />
-        <input v-model="boardName" placeholder="Board name" style="max-width: 9rem" />
+        <input v-model="urlInput" placeholder="Host IP (e.g. 192.168.1.20)" />
         <button @click="connect">{{ connected ? 'Reconnect' : 'Connect' }}</button>
       </div>
 
-      <div class="line">
-        <input v-model="tournamentId" placeholder="Tournament ID" />
-        <button :disabled="!connected" @click="subscribe">Subscribe</button>
+      <div v-if="connected" class="stack">
+        <select :value="tournamentId" @change="chooseTournament">
+          <option value="">Select tournament</option>
+          <option v-for="tournament in tournaments" :key="tournament.id" :value="tournament.id">
+            {{ tournament.name }}
+          </option>
+        </select>
+        <select :value="floorId" :disabled="!tournamentId" @change="chooseFloor">
+          <option value="">Select floor</option>
+          <option v-for="floor in floors" :key="floor.id" :value="floor.id">
+            {{ floor.name }}
+          </option>
+        </select>
+        <p v-if="floorId" class="hint">This board is the input device for the selected floor.</p>
+        <p v-if="assignment" class="hint">Match assigned — starting on the board.</p>
       </div>
 
       <p v-if="errorMsg" class="err">{{ errorMsg }}</p>
-
-      <div v-if="snapshot" class="matches">
-        <div class="hint">Ready matches — tap to claim:</div>
-        <div class="chips">
-          <button
-            v-for="m in snapshot.matches.filter((x) => x.status === 'ready')"
-            :key="m.id"
-            class="chip"
-            @click="client.claim(m.id)"
-          >
-            R{{ m.round + 1 }} · M{{ m.slot + 1 }}
-          </button>
-          <span v-if="!snapshot.matches.some((x) => x.status === 'ready')" class="hint">
-            none yet
-          </span>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -99,7 +102,14 @@ function subscribe() {
   gap: 8px;
 }
 
-input {
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+input,
+select {
   flex: 1;
   min-width: 0;
   background: #0f172a;
@@ -123,19 +133,6 @@ button {
 
 button:disabled {
   opacity: 0.5;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  background: #0891b2;
-  border: none;
-  color: #04283b;
-  font-weight: 700;
 }
 
 .hint {

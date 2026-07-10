@@ -1,8 +1,16 @@
 // Thin typed query helpers over Drizzle. Keeps SQL-ish detail out of the services.
 import { asc, eq } from 'drizzle-orm'
-import type { Match, Participant, Stage, Tournament } from '@pi-darts/shared'
+import type { Floor, Match, Participant, Stage, Tournament } from '@pi-darts/shared'
 import { db } from './db/client'
-import { groupMembers, groups, matches, participants, stages, tournaments } from './db/schema'
+import {
+  floors,
+  groupMembers,
+  groups,
+  matches,
+  participants,
+  stages,
+  tournaments,
+} from './db/schema'
 
 export const repo = {
   getTournament(id: string): Tournament | undefined {
@@ -15,6 +23,19 @@ export const repo = {
 
   listParticipants(tournamentId: string): Participant[] {
     return db.select().from(participants).where(eq(participants.tournamentId, tournamentId)).all()
+  },
+
+  getFloor(id: string): Floor | undefined {
+    return db.select().from(floors).where(eq(floors.id, id)).get()
+  },
+
+  listFloors(tournamentId: string): Floor[] {
+    return db
+      .select()
+      .from(floors)
+      .where(eq(floors.tournamentId, tournamentId))
+      .orderBy(asc(floors.name))
+      .all()
   },
 
   listStages(tournamentId: string): Stage[] {

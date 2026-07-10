@@ -1,7 +1,7 @@
 // Typed socket.io event maps. These are plain interfaces of event signatures, so
 // this module stays free of any socket.io dependency — the server and clients
 // supply them as generics to Server<...> / io<...>() for end-to-end typing.
-import type { LiveMatchState, Match, Multiplier, Standing, Tournament } from './domain'
+import type { Floor, LiveMatchState, Match, Multiplier, Standing, Tournament } from './domain'
 
 /** A live dart pushed from a board while a match is in progress. */
 export interface ThrowPayload {
@@ -27,6 +27,7 @@ export interface MatchAssignment {
 /** Full tournament snapshot pushed to subscribers (e.g. the overview screen). */
 export interface TournamentSnapshot {
   tournament: Tournament
+  floors: Floor[]
   matches: Match[]
   standings: Standing[]
 }
@@ -40,8 +41,8 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-  /** A board announces itself (stable id lets it reclaim a match after reconnect). */
-  'board:register': (payload: { boardId: string; name?: string }) => void
+  /** Bind a board's stable ID to a tournament floor. */
+  'board:register': (payload: { boardId: string; tournamentId: string; floorId: string }) => void
   /** Subscribe to a tournament's room to receive state + live updates. */
   'tournament:subscribe': (payload: { tournamentId: string }) => void
   /** A board takes ownership of a ready match. */
@@ -57,4 +58,5 @@ export interface InterServerEvents {
 export interface SocketData {
   boardId?: string
   tournamentId?: string
+  floorId?: string
 }

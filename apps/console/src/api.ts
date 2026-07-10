@@ -3,6 +3,7 @@
 import type {
   AddParticipantInput,
   CreateStageInput,
+  Floor,
   Match,
   Participant,
   Stage,
@@ -18,6 +19,7 @@ export interface GroupView {
 
 export interface TournamentDetail {
   tournament: Tournament
+  floors: Floor[]
   participants: Participant[]
   stages: Stage[]
   matches: Match[]
@@ -52,6 +54,12 @@ export const api = {
   createTournament(name: string): Promise<Tournament> {
     return post('/api/tournaments', { name })
   },
+  createFloor(tournamentId: string, name: string): Promise<Floor> {
+    return post(`/api/tournaments/${tournamentId}/floors`, { name })
+  },
+  async deleteFloor(id: string): Promise<void> {
+    await json<{ ok: true }>(await fetch(`/api/floors/${id}`, { method: 'DELETE' }))
+  },
   addParticipant(tournamentId: string, input: AddParticipantInput): Promise<Participant> {
     return post(`/api/tournaments/${tournamentId}/participants`, input)
   },
@@ -69,6 +77,9 @@ export const api = {
   },
   claimMatch(id: string): Promise<Match> {
     return post(`/api/matches/${id}/claim`)
+  },
+  assignMatchFloor(id: string, floorId: string): Promise<Match> {
+    return post(`/api/matches/${id}/floor`, { floorId })
   },
   reportLeg(id: string, legIndex: number, winnerId: string): Promise<Match> {
     return post(`/api/matches/${id}/legs`, { legIndex, winnerId })

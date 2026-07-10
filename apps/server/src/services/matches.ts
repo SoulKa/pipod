@@ -21,6 +21,30 @@ export function claimMatch(matchId: string): Match {
   return repo.getMatch(matchId)!
 }
 
+/** Attach a ready match to a floor. Dispatch changes it to live when its board connects. */
+export function assignMatchFloor(matchId: string, floorId: string): Match {
+  const match = repo.getMatch(matchId)
+  if (!match) throw new Error('match not found')
+  if (match.status !== 'ready') throw new Error('only ready matches can be assigned')
+  const floor = repo.getFloor(floorId)
+  if (!floor || floor.tournamentId !== match.tournamentId) {
+    throw new Error('floor does not belong to this tournament')
+  }
+  db.update(matches).set({ floorId }).where(eq(matches.id, matchId)).run()
+  return repo.getMatch(matchId)!
+}
+
+/** Start a floor-assigned match only after dispatching it to that floor's board. */
+export function dispatchMatch(matchId: string, floorId: string): Match {
+  const match = repo.getMatch(matchId)
+  if (!match) throw new Error('match not found')
+  if (match.status !== 'ready' || match.floorId !== floorId) {
+    throw new Error('match is not ready for this floor')
+  }
+  db.update(matches).set({ status: 'live' }).where(eq(matches.id, matchId)).run()
+  return repo.getMatch(matchId)!
+}
+
 /**
  * Push a completed match's winner into its downstream bracket slot. Returns the
  * updated downstream match (empty when there's nowhere to advance).
