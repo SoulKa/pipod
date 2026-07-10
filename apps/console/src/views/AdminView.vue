@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref } from 'vue'
-import type { OutMode, StageType, StartScore, Tournament } from '@pi-darts/shared'
+import type { OutMode, StageType, StartScore, Tournament, TournamentStatus } from '@pi-darts/shared'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
+
+type AdminTab = 'setup' | 'tournament'
 
 const tournaments = ref<Tournament[]>([])
 const feed = useTournamentFeed()
 const { detail, live } = feed
 const selectedId = ref<string | null>(null)
+const activeTab = ref<AdminTab>('setup')
 const error = ref('')
 
 const newTournamentName = ref('')
@@ -21,6 +24,10 @@ const newStage = reactive({
   outMode: 'double' as OutMode,
 })
 const genOpts = reactive({ groupCount: 2, qualifiersPerGroup: 2 })
+
+function defaultTab(status: TournamentStatus): AdminTab {
+  return status === 'setup' ? 'setup' : 'tournament'
+}
 
 async function run(fn: () => Promise<unknown>) {
   error.value = ''
@@ -40,6 +47,7 @@ async function select(id: string) {
   selectedId.value = id
   feed.close()
   await feed.open(id)
+  if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
 }
 
 const nameOf = computed(() => {
@@ -52,35 +60,56 @@ const floorNameOf = computed(() => {
 })
 
 const stagesWithMatches = computed(() =>
-  (detail.value?.stages ?? []).map((stage) => ({
-    stage,
-    matches: (detail.value?.matches ?? []).filter((m) => m.stageId === stage.id),
-  })),
+  (detail.value?.stages ?? []).map((stage) => {
+    const matches = (detail.value?.matches ?? []).filter((match) => match.stageId === stage.id)
+    return {
+      stage,
+      matches,
+      completed: matches.filter((match) => match.status === 'completed').length,
+      ready: matches.filter((match) => match.status === 'ready').length,
+      live: matches.filter((match) => match.status === 'live').length,
+    }
+  }),
+)
+const readyMatches = computed(() =>
+  (detail.value?.matches ?? []).filter((match) => match.status === 'ready'),
+)
+const liveMatches = computed(() =>
+  (detail.value?.matches ?? []).filter((match) => match.status === 'live'),
+)
+const queuedMatches = computed(() =>
+  (detail.value?.matches ?? []).filter((match) => match.status === 'pending'),
+)
+const assignedMatches = computed(() => readyMatches.value.filter((match) => match.floorId !== null))
+const completedMatches = computed(() =>
+  (detail.value?.matches ?? []).filter((match) => match.status === 'completed'),
 )
 
 async function createTournament() {
   await run(async () => {
-    const t = await api.createTournament(newTournamentName.value.trim())
+    const tournament = await api.createTournament(newTournamentName.value.trim())
     newTournamentName.value = ''
     await loadTournaments()
-    await select(t.id)
+    await select(tournament.id)
   })
 }
 
 async function addParticipant() {
-  if (!selectedId.value) return
+  const tournamentId = selectedId.value
+  if (!tournamentId) return
   await run(async () => {
     const seed = newParticipant.seed ? Number(newParticipant.seed) : null
-    await api.addParticipant(selectedId.value!, { name: newParticipant.name.trim(), seed })
+    await api.addParticipant(tournamentId, { name: newParticipant.name.trim(), seed })
     newParticipant.name = ''
     newParticipant.seed = ''
   })
 }
 
 async function addFloor() {
-  if (!selectedId.value) return
+  const tournamentId = selectedId.value
+  if (!tournamentId) return
   await run(async () => {
-    await api.createFloor(selectedId.value!, newFloorName.value.trim())
+    await api.createFloor(tournamentId, newFloorName.value.trim())
     newFloorName.value = ''
     await feed.refresh()
   })
@@ -110,9 +139,10 @@ async function removeParticipant(id: string) {
 }
 
 async function createStage() {
-  if (!selectedId.value) return
+  const tournamentId = selectedId.value
+  if (!tournamentId) return
   await run(async () => {
-    await api.createStage(selectedId.value!, {
+    await api.createStage(tournamentId, {
       name: newStage.name.trim(),
       type: newStage.type,
       format: newStage.type === 'group' ? 'round_robin' : 'single_elimination',
@@ -134,6 +164,15 @@ async function generate(stageId: string, type: StageType) {
         : { qualifiersPerGroup: Number(genOpts.qualifiersPerGroup) },
     )
     await feed.refresh()
+    const currentTournament = detail.value?.tournament
+    if (currentTournament?.status === 'active') {
+      tournaments.value = tournaments.value.map((tournament) =>
+        tournament.id === currentTournament.id
+          ? { ...tournament, status: currentTournament.status }
+          : tournament,
+      )
+      activeTab.value = 'tournament'
+    }
   })
 }
 
@@ -167,12 +206,13 @@ onUnmounted(() => feed.close())
         </div>
         <div class="tournament-list" aria-label="Tournament selector">
           <button
-            v-for="t in tournaments"
-            :key="t.id"
-            :class="{ 'tournament-button--active': t.id === selectedId }"
-            @click="select(t.id)"
+            v-for="tournament in tournaments"
+            :key="tournament.id"
+            :class="{ 'tournament-button--active': tournament.id === selectedId }"
+            @click="select(tournament.id)"
           >
-            {{ t.name }}
+            <span>{{ tournament.name }}</span>
+            <small>{{ tournament.status }}</small>
           </button>
           <p v-if="!tournaments.length" class="pd-muted rail-empty">
             Create a tournament to begin.
@@ -183,22 +223,122 @@ onUnmounted(() => feed.close())
       <section v-if="detail" class="admin-workbench">
         <header class="workbench-heading">
           <div>
-            <p class="eyebrow">Tournament workbench</p>
+            <p class="eyebrow">
+              {{ activeTab === 'setup' ? 'Tournament preparation' : 'Tournament operations' }}
+            </p>
             <div class="title-row">
               <h2>{{ detail.tournament.name }}</h2>
               <span class="status">{{ detail.tournament.status }}</span>
             </div>
           </div>
-          <RouterLink :to="`/view/${detail.tournament.id}`" target="_blank">
-            Open overview ↗
-          </RouterLink>
+          <div class="heading-actions">
+            <RouterLink :to="`/view/${detail.tournament.id}`" target="_blank">
+              Open overview ↗
+            </RouterLink>
+          </div>
         </header>
 
-        <div class="setup-grid">
-          <section class="pd-panel pd-panel--compact setup-panel">
+        <div class="admin-tabs" role="tablist" aria-label="Tournament workspace">
+          <button
+            :class="{ 'admin-tab--active': activeTab === 'setup' }"
+            role="tab"
+            :aria-selected="activeTab === 'setup'"
+            @click="activeTab = 'setup'"
+          >
+            Setup
+          </button>
+          <button
+            :class="{ 'admin-tab--active': activeTab === 'tournament' }"
+            role="tab"
+            :aria-selected="activeTab === 'tournament'"
+            @click="activeTab = 'tournament'"
+          >
+            Tournament
+          </button>
+        </div>
+
+        <section v-if="activeTab === 'setup'" class="setup-workflow">
+          <header class="workflow-heading">
             <div>
-              <p class="eyebrow">Configuration</p>
-              <h3>Add stage</h3>
+              <p class="eyebrow">Guided preparation</p>
+              <h2>Build the playing order</h2>
+            </div>
+            <p class="pd-muted">Add the roster, prepare boards, then create and generate stages.</p>
+          </header>
+
+          <section class="pd-panel setup-step">
+            <div class="step-heading">
+              <span class="step-number">1</span>
+              <div>
+                <p class="eyebrow">Roster</p>
+                <h3>
+                  Players <span class="count">{{ detail.participants.length }}</span>
+                </h3>
+              </div>
+            </div>
+            <ul v-if="detail.participants.length" class="players">
+              <li v-for="participant in detail.participants" :key="participant.id">
+                <span>{{ participant.name }}</span>
+                <span v-if="participant.seed" class="pd-muted">seed {{ participant.seed }}</span>
+                <button
+                  class="remove-button"
+                  aria-label="Remove player"
+                  @click="removeParticipant(participant.id)"
+                >
+                  ✕
+                </button>
+              </li>
+            </ul>
+            <p v-else class="pd-muted">Add every player before generating the first stage.</p>
+            <div class="player-create">
+              <input
+                v-model="newParticipant.name"
+                placeholder="Player name"
+                @keyup.enter="addParticipant"
+              />
+              <input v-model="newParticipant.seed" aria-label="Seed" placeholder="Seed" />
+              <button :disabled="!newParticipant.name.trim()" @click="addParticipant">
+                Add player
+              </button>
+            </div>
+          </section>
+
+          <section class="pd-panel setup-step">
+            <div class="step-heading">
+              <span class="step-number">2</span>
+              <div>
+                <p class="eyebrow">Boards</p>
+                <h3>
+                  Floors <span class="count">{{ detail.floors.length }}</span>
+                </h3>
+              </div>
+            </div>
+            <p class="pd-muted">Each floor accepts one connected board.</p>
+            <div v-if="detail.floors.length" class="floor-list">
+              <span v-for="floor in detail.floors" :key="floor.id" class="floor-chip">
+                {{ floor.name }}
+                <button
+                  class="remove-button"
+                  aria-label="Remove floor"
+                  @click="removeFloor(floor.id)"
+                >
+                  ✕
+                </button>
+              </span>
+            </div>
+            <div class="inline-create">
+              <input v-model="newFloorName" placeholder="Floor name" @keyup.enter="addFloor" />
+              <button :disabled="!newFloorName.trim()" @click="addFloor">Add floor</button>
+            </div>
+          </section>
+
+          <section class="pd-panel setup-step">
+            <div class="step-heading">
+              <span class="step-number">3</span>
+              <div>
+                <p class="eyebrow">Format</p>
+                <h3>Create a stage</h3>
+              </div>
             </div>
             <div class="stage-form">
               <input v-model="newStage.name" placeholder="Stage name (e.g. Groups)" />
@@ -220,154 +360,205 @@ onUnmounted(() => feed.close())
               </select>
               <button :disabled="!newStage.name.trim()" @click="createStage">Add stage</button>
             </div>
-            <div class="generation-options pd-muted">
-              <label
-                >Groups <input v-model="genOpts.groupCount" aria-label="Number of groups"
-              /></label>
-              <label>
-                Qualifiers / group
-                <input v-model="genOpts.qualifiersPerGroup" aria-label="Qualifiers per group" />
-              </label>
-            </div>
           </section>
 
-          <section class="pd-panel pd-panel--compact setup-panel">
-            <div>
-              <p class="eyebrow">Boards</p>
-              <h3>Floors</h3>
-            </div>
-            <p class="pd-muted">Each floor accepts one connected board.</p>
-            <div v-if="detail.floors.length" class="floor-list">
-              <span v-for="floor in detail.floors" :key="floor.id" class="floor-chip">
-                {{ floor.name }}
-                <button
-                  class="remove-button"
-                  aria-label="Remove floor"
-                  @click="removeFloor(floor.id)"
-                >
-                  ✕
-                </button>
-              </span>
-            </div>
-            <div class="inline-create">
-              <input v-model="newFloorName" placeholder="Floor name" @keyup.enter="addFloor" />
-              <button :disabled="!newFloorName.trim()" @click="addFloor">Add</button>
-            </div>
-          </section>
-
-          <section class="pd-panel pd-panel--compact setup-panel">
-            <div class="section-title">
+          <section class="schedule-step">
+            <div class="workflow-heading">
               <div>
-                <p class="eyebrow">Roster</p>
-                <h3>
-                  Players <span class="count">{{ detail.participants.length }}</span>
-                </h3>
+                <p class="eyebrow">Schedule</p>
+                <h2>Generate stages</h2>
+              </div>
+              <div class="generation-options pd-muted">
+                <label
+                  >Groups <input v-model="genOpts.groupCount" aria-label="Number of groups"
+                /></label>
+                <label>
+                  Qualifiers / group
+                  <input v-model="genOpts.qualifiersPerGroup" aria-label="Qualifiers per group" />
+                </label>
               </div>
             </div>
-            <ul v-if="detail.participants.length" class="players">
-              <li v-for="p in detail.participants" :key="p.id">
-                <span>{{ p.name }}</span>
-                <span v-if="p.seed" class="pd-muted">seed {{ p.seed }}</span>
-                <button
-                  class="remove-button"
-                  aria-label="Remove player"
-                  @click="removeParticipant(p.id)"
-                >
-                  ✕
-                </button>
-              </li>
-            </ul>
-            <div class="player-create">
-              <input
-                v-model="newParticipant.name"
-                placeholder="Player name"
-                @keyup.enter="addParticipant"
-              />
-              <input v-model="newParticipant.seed" aria-label="Seed" placeholder="Seed" />
-              <button :disabled="!newParticipant.name.trim()" @click="addParticipant">Add</button>
-            </div>
-          </section>
-        </div>
-
-        <section class="stages-section">
-          <div class="stages-heading">
-            <div>
-              <p class="eyebrow">Schedule</p>
-              <h2>Stages & matches</h2>
-            </div>
-            <p class="pd-muted">Generate a stage when the roster and format are ready.</p>
-          </div>
-
-          <div v-if="stagesWithMatches.length" class="stage-grid">
-            <section
-              v-for="{ stage, matches } in stagesWithMatches"
-              :key="stage.id"
-              class="pd-panel pd-panel--compact stage-panel"
-            >
-              <div class="stage-heading">
+            <div v-if="stagesWithMatches.length" class="setup-stage-list">
+              <article
+                v-for="{ stage, matches } in stagesWithMatches"
+                :key="stage.id"
+                class="pd-panel pd-panel--compact setup-stage-card"
+              >
                 <div>
                   <h3>{{ stage.name }}</h3>
-                  <p class="pd-muted">{{ stage.type }} · Bo{{ stage.bestOf }}</p>
+                  <p class="pd-muted">
+                    {{ stage.type }} · Bo{{ stage.bestOf }} · {{ stage.startScore }} ·
+                    {{ stage.outMode }} out
+                  </p>
                 </div>
-                <button class="pd-button--primary" @click="generate(stage.id, stage.type)">
-                  {{ matches.length ? 'Regenerate' : 'Generate' }}
+                <button
+                  class="pd-button--primary"
+                  :disabled="matches.length > 0"
+                  @click="generate(stage.id, stage.type)"
+                >
+                  {{ matches.length ? `${matches.length} matches generated` : 'Generate stage' }}
                 </button>
+              </article>
+            </div>
+            <div v-else class="pd-panel pd-panel--compact empty-stages">
+              <p class="pd-muted">Add a stage to begin building the tournament schedule.</p>
+            </div>
+          </section>
+        </section>
+
+        <section v-else class="tournament-workspace">
+          <section
+            v-if="detail.tournament.status === 'completed'"
+            class="completed-summary pd-panel"
+          >
+            <div>
+              <p class="eyebrow">Tournament complete</p>
+              <h2>All scheduled matches are complete.</h2>
+            </div>
+            <strong>{{ completedMatches.length }} matches played</strong>
+          </section>
+
+          <section class="operations-surface">
+            <div class="operations-heading">
+              <div>
+                <p class="eyebrow">Floor control</p>
+                <h2>Ready to play</h2>
               </div>
-              <div v-if="matches.length" class="match-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>R</th>
-                      <th>Match</th>
-                      <th>Legs</th>
-                      <th>Floor</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="m in matches" :key="m.id">
-                      <td>{{ m.round + 1 }}</td>
-                      <td class="match-players">
-                        <strong :class="{ win: m.winnerId === m.participantAId }">{{
-                          nameOf(m.participantAId)
-                        }}</strong>
-                        <span class="pd-muted">vs</span>
-                        <strong :class="{ win: m.winnerId === m.participantBId }">{{
-                          nameOf(m.participantBId)
-                        }}</strong>
-                      </td>
-                      <td class="pd-numeric">
-                        {{ live.get(m.id)?.legsA ?? m.legsA }}–{{
-                          live.get(m.id)?.legsB ?? m.legsB
-                        }}
-                      </td>
-                      <td>
-                        <select
-                          v-if="m.status === 'ready'"
-                          :value="m.floorId ?? ''"
-                          :disabled="!detail.floors.length"
-                          @change="assignFloor(m.id, $event)"
-                        >
-                          <option value="">Assign floor</option>
-                          <option v-for="floor in detail.floors" :key="floor.id" :value="floor.id">
-                            {{ floor.name }}
-                          </option>
-                        </select>
-                        <span v-else>{{ floorNameOf(m.floorId) }}</span>
-                      </td>
-                      <td>
-                        <span class="match-status">{{ m.status }}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+              <span class="ready-count">{{ readyMatches.length }} ready</span>
+            </div>
+            <div v-if="readyMatches.length" class="ready-match-grid">
+              <article v-for="match in readyMatches" :key="match.id" class="pd-panel ready-match">
+                <div class="ready-match-meta">
+                  <span>{{
+                    stagesWithMatches.find((item) => item.stage.id === match.stageId)?.stage.name
+                  }}</span>
+                  <span>Round {{ match.round + 1 }}</span>
+                </div>
+                <div class="ready-matchup">
+                  <strong>{{ nameOf(match.participantAId) }}</strong>
+                  <span>vs</span>
+                  <strong>{{ nameOf(match.participantBId) }}</strong>
+                </div>
+                <p class="pd-muted">
+                  {{ match.startScore }} · {{ match.outMode }} out · best of {{ match.bestOf }}
+                </p>
+                <label class="floor-select">
+                  <span>Play on</span>
+                  <select
+                    :value="match.floorId ?? ''"
+                    :disabled="!detail.floors.length"
+                    @change="assignFloor(match.id, $event)"
+                  >
+                    <option value="">Select floor</option>
+                    <option v-for="floor in detail.floors" :key="floor.id" :value="floor.id">
+                      {{ floor.name }}
+                    </option>
+                  </select>
+                </label>
+              </article>
+            </div>
+            <div v-else class="pd-panel pd-panel--compact operations-empty">
+              <p class="pd-muted">
+                {{
+                  detail.tournament.status === 'completed'
+                    ? 'No matches remain.'
+                    : 'No match is ready yet. Watch stage progress below for the next release.'
+                }}
+              </p>
+            </div>
+          </section>
+
+          <section class="secondary-status">
+            <article class="pd-panel pd-panel--compact status-panel">
+              <div class="status-panel-heading">
+                <div>
+                  <p class="eyebrow">Live boards</p>
+                  <h3>{{ liveMatches.length ? `${liveMatches.length} in play` : 'Waiting' }}</h3>
+                </div>
               </div>
-              <p v-else class="pd-muted">No matches yet — set players/options and Generate.</p>
-            </section>
-          </div>
-          <div v-else class="pd-panel pd-panel--compact empty-stages">
-            <p class="pd-muted">Add a stage to begin building the tournament schedule.</p>
-          </div>
+              <div v-if="liveMatches.length" class="live-match-list">
+                <div v-for="match in liveMatches" :key="match.id" class="live-match-row">
+                  <span
+                    >{{ nameOf(match.participantAId) }} vs {{ nameOf(match.participantBId) }}</span
+                  >
+                  <strong
+                    >{{ live.get(match.id)?.legsA ?? match.legsA }}–{{
+                      live.get(match.id)?.legsB ?? match.legsB
+                    }}</strong
+                  >
+                  <small>{{ floorNameOf(match.floorId) }}</small>
+                </div>
+              </div>
+              <p v-else class="pd-muted">No board is scoring a match right now.</p>
+            </article>
+
+            <article class="pd-panel pd-panel--compact status-panel">
+              <p class="eyebrow">Match queue</p>
+              <div class="queue-counts">
+                <div>
+                  <strong>{{ assignedMatches.length }}</strong>
+                  <span>assigned</span>
+                </div>
+                <div>
+                  <strong>{{ queuedMatches.length }}</strong>
+                  <span>queued</span>
+                </div>
+                <div>
+                  <strong>{{ completedMatches.length }}</strong>
+                  <span>complete</span>
+                </div>
+              </div>
+              <p class="pd-muted">Assigned matches stay in Ready until their board claims them.</p>
+            </article>
+          </section>
+
+          <section class="stage-progress">
+            <div class="operations-heading">
+              <div>
+                <p class="eyebrow">Tournament progress</p>
+                <h2>Stages</h2>
+              </div>
+              <span class="pd-muted"
+                >{{ completedMatches.length }} / {{ detail.matches.length }} complete</span
+              >
+            </div>
+            <div v-if="stagesWithMatches.length" class="stage-progress-list">
+              <article
+                v-for="{ stage, matches, completed, ready, live: liveCount } in stagesWithMatches"
+                :key="stage.id"
+                class="pd-panel pd-panel--compact progress-card"
+              >
+                <div class="progress-card-heading">
+                  <div>
+                    <h3>{{ stage.name }}</h3>
+                    <p class="pd-muted">{{ stage.type }} · Bo{{ stage.bestOf }}</p>
+                  </div>
+                  <span>{{ completed }}/{{ matches.length || '—' }}</span>
+                </div>
+                <div v-if="matches.length" class="progress-track" aria-hidden="true">
+                  <span :style="{ width: `${(completed / matches.length) * 100}%` }"></span>
+                </div>
+                <p class="pd-muted">
+                  {{
+                    matches.length
+                      ? `${ready} ready · ${liveCount} live · ${completed} complete`
+                      : 'Waiting to be generated'
+                  }}
+                </p>
+                <button
+                  v-if="!matches.length && detail.tournament.status !== 'completed'"
+                  @click="generate(stage.id, stage.type)"
+                >
+                  Generate {{ stage.name }}
+                </button>
+              </article>
+            </div>
+            <div v-else class="pd-panel pd-panel--compact empty-stages">
+              <p class="pd-muted">
+                No stages have been created. Switch to Setup to prepare the draw.
+              </p>
+            </div>
+          </section>
         </section>
       </section>
 
@@ -383,9 +574,15 @@ onUnmounted(() => feed.close())
 </template>
 
 <style scoped>
-.admin {
+.admin,
+.admin-workbench,
+.setup-workflow,
+.tournament-workspace,
+.schedule-step,
+.operations-surface,
+.stage-progress {
   display: grid;
-  gap: var(--pd-space-4);
+  gap: var(--pd-space-5);
 }
 
 .error {
@@ -409,8 +606,11 @@ onUnmounted(() => feed.close())
 
 .rail-heading,
 .workbench-heading > div,
-.stages-heading > div,
-.setup-panel > div {
+.workflow-heading > div,
+.step-heading > div,
+.operations-heading > div,
+.status-panel-heading > div,
+.progress-card-heading > div {
   display: grid;
   gap: var(--pd-space-1);
 }
@@ -437,9 +637,27 @@ onUnmounted(() => feed.close())
 }
 
 .tournament-list button {
+  display: flex;
   width: 100%;
-  justify-content: flex-start;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pd-space-2);
   text-align: left;
+}
+
+.tournament-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-list small {
+  color: var(--pd-text-dim);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .tournament-button--active {
@@ -453,18 +671,24 @@ onUnmounted(() => feed.close())
 }
 
 .admin-workbench {
-  display: grid;
   min-width: 0;
-  gap: var(--pd-space-5);
 }
 
 .workbench-heading,
-.stages-heading,
+.workflow-heading,
+.operations-heading,
+.progress-card-heading,
+.completed-summary,
 .stage-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--pd-space-4);
+}
+
+.heading-actions {
+  display: flex;
+  flex: 0 0 auto;
 }
 
 .title-row {
@@ -475,7 +699,7 @@ onUnmounted(() => feed.close())
 }
 
 .status,
-.match-status {
+.ready-count {
   display: inline-flex;
   width: fit-content;
   align-items: center;
@@ -489,50 +713,61 @@ onUnmounted(() => feed.close())
   text-transform: uppercase;
 }
 
-.setup-grid {
-  display: grid;
-  gap: var(--pd-space-4);
-  align-items: stretch;
+.admin-tabs {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--pd-space-1);
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius);
+  background: var(--pd-surface-sunken);
 }
 
-.setup-panel {
-  min-width: 0;
-}
-
-.stage-form {
-  display: grid;
-  grid-template-columns: minmax(10rem, 1.7fr) minmax(9rem, 1.4fr) minmax(5rem, 0.7fr);
-  gap: var(--pd-space-2);
-}
-
-.stage-form select,
-.stage-form button {
-  min-width: 0;
-}
-
-.stage-form label,
-.generation-options label {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--pd-space-2);
+.admin-tabs button {
+  min-width: 8rem;
+  border-color: transparent;
+  background: transparent;
   color: var(--pd-text-muted);
 }
 
-.stage-form label input,
-.generation-options input {
-  width: 100%;
-  min-width: 0;
+.admin-tabs .admin-tab--active {
+  border-color: var(--pd-border-accent);
+  background: var(--pd-accent-soft);
+  color: var(--pd-accent);
 }
 
-.generation-options {
-  display: flex;
-  flex-wrap: wrap;
+.workflow-heading {
+  align-items: end;
+}
+
+.workflow-heading > .pd-muted {
+  max-width: 30rem;
+  margin: 0;
+  text-align: right;
+}
+
+.setup-step {
+  display: grid;
   gap: var(--pd-space-3);
 }
 
-.generation-options label {
-  flex: 1 1 10rem;
+.step-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--pd-space-3);
+}
+
+.step-number {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--pd-border-accent);
+  border-radius: var(--pd-radius-lg);
+  background: var(--pd-accent-soft);
+  color: var(--pd-accent);
+  font-weight: 850;
 }
 
 .floor-list,
@@ -573,6 +808,7 @@ onUnmounted(() => feed.close())
 }
 
 .remove-button {
+  width: 2.75rem;
   min-width: 2.75rem;
   min-height: 2.75rem;
   padding: var(--pd-space-1);
@@ -587,54 +823,269 @@ onUnmounted(() => feed.close())
   color: var(--pd-danger);
 }
 
-.stages-section {
+.stage-form {
   display: grid;
-  gap: var(--pd-space-4);
+  grid-template-columns: minmax(10rem, 1.7fr) minmax(9rem, 1.4fr) minmax(5rem, 0.7fr);
+  gap: var(--pd-space-2);
 }
 
-.stages-heading {
-  align-items: end;
-}
-
-.stage-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
-  gap: var(--pd-space-4);
-  align-items: start;
-}
-
-.stage-panel {
+.stage-form select,
+.stage-form button {
   min-width: 0;
 }
 
-.stage-heading {
-  align-items: start;
+.stage-form label,
+.generation-options label,
+.floor-select {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--pd-space-2);
+  color: var(--pd-text-muted);
 }
 
-.match-table-wrap {
-  overflow-x: auto;
+.stage-form label input,
+.generation-options input {
+  width: 100%;
+  min-width: 0;
 }
 
-.match-table-wrap table {
-  min-width: 35rem;
+.generation-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--pd-space-3);
 }
 
-.match-players {
-  min-width: 13rem;
+.generation-options label {
+  flex: 1 1 10rem;
 }
 
-.match-players strong + span {
-  margin-inline: var(--pd-space-1);
+.setup-stage-list,
+.stage-progress-list {
+  display: grid;
+  gap: var(--pd-space-3);
 }
 
-.win {
-  color: var(--pd-success);
+.setup-stage-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pd-space-4);
+}
+
+.setup-stage-card > div {
+  display: grid;
+  gap: var(--pd-space-1);
+}
+
+.setup-stage-card p,
+.completed-summary p,
+.progress-card p,
+.status-panel p {
+  margin: 0;
 }
 
 .empty-stages,
-.empty-workbench {
-  min-height: 12rem;
+.empty-workbench,
+.operations-empty {
+  min-height: 8rem;
   justify-content: center;
+}
+
+.tournament-workspace {
+  gap: var(--pd-space-6);
+}
+
+.completed-summary {
+  border-color: var(--pd-success);
+  background: var(--pd-success-soft);
+}
+
+.completed-summary strong {
+  color: var(--pd-success);
+  font-variant-numeric: tabular-nums;
+}
+
+.operations-surface {
+  width: min(100%, 90rem);
+  margin: 0 auto;
+}
+
+.ready-count {
+  border-color: var(--pd-border-accent);
+  background: var(--pd-accent-soft);
+  color: var(--pd-accent);
+}
+
+.ready-match-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--pd-space-4);
+}
+
+.ready-match {
+  display: grid;
+  min-height: 17rem;
+  align-content: space-between;
+  gap: var(--pd-space-3);
+  border-color: var(--pd-border-accent);
+  background: var(--pd-surface-gradient);
+}
+
+.ready-match-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--pd-space-2);
+  color: var(--pd-text-muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ready-matchup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--pd-space-2);
+}
+
+.ready-matchup strong {
+  overflow: hidden;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ready-matchup strong:last-child {
+  text-align: right;
+}
+
+.ready-matchup span {
+  color: var(--pd-accent);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.floor-select {
+  justify-content: space-between;
+  padding-top: var(--pd-space-2);
+  border-top: 1px solid var(--pd-border);
+  font-weight: 750;
+}
+
+.floor-select select {
+  min-width: 9rem;
+}
+
+.secondary-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--pd-space-4);
+}
+
+.status-panel {
+  min-width: 0;
+  gap: var(--pd-space-3);
+}
+
+.live-match-list {
+  display: grid;
+}
+
+.live-match-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--pd-space-3);
+  padding: var(--pd-space-2) 0;
+  border-top: 1px solid var(--pd-border);
+}
+
+.live-match-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-match-row strong {
+  color: var(--pd-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-match-row small {
+  color: var(--pd-text-muted);
+}
+
+.queue-counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--pd-space-2);
+}
+
+.queue-counts div {
+  display: grid;
+  gap: var(--pd-space-1);
+  padding: var(--pd-space-2);
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius-sm);
+  background: var(--pd-surface-sunken);
+}
+
+.queue-counts strong {
+  color: var(--pd-accent);
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-counts span {
+  color: var(--pd-text-muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.stage-progress {
+  width: min(100%, 90rem);
+  margin: 0 auto;
+}
+
+.stage-progress-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.progress-card {
+  min-width: 0;
+  gap: var(--pd-space-3);
+}
+
+.progress-card-heading {
+  align-items: start;
+}
+
+.progress-card-heading > span {
+  color: var(--pd-accent);
+  font-size: 0.84rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--pd-radius-lg);
+  background: var(--pd-surface-sunken);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--pd-accent);
 }
 
 .empty-workbench {
@@ -643,7 +1094,7 @@ onUnmounted(() => feed.close())
 
 @media (min-width: 75rem) {
   .admin-shell {
-    grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+    grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
   }
 
   .tournament-rail {
@@ -651,10 +1102,6 @@ onUnmounted(() => feed.close())
     top: calc(4.5rem + var(--pd-space-4));
     max-height: calc(100vh - 6.5rem);
     overflow-y: auto;
-  }
-
-  .setup-grid {
-    grid-template-columns: minmax(0, 1.3fr) minmax(15rem, 0.9fr) minmax(17rem, 1fr);
   }
 }
 
@@ -669,26 +1116,24 @@ onUnmounted(() => feed.close())
     width: auto;
     flex: 0 0 auto;
   }
-
-  .setup-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .setup-grid > :first-child {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 40rem) {
   .workbench-heading,
-  .stages-heading,
-  .stage-heading {
+  .workflow-heading,
+  .operations-heading,
+  .completed-summary,
+  .setup-stage-card {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .setup-grid,
-  .stage-form {
+  .workflow-heading > .pd-muted {
+    text-align: left;
+  }
+
+  .stage-form,
+  .secondary-status {
     grid-template-columns: 1fr;
   }
 
@@ -702,7 +1147,29 @@ onUnmounted(() => feed.close())
 
   .generation-options {
     display: grid;
+    width: 100%;
     grid-template-columns: 1fr;
+  }
+
+  .admin-tabs {
+    width: 100%;
+  }
+
+  .admin-tabs button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ready-match {
+    min-height: 15rem;
+  }
+
+  .live-match-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .live-match-row small {
+    grid-column: 1 / -1;
   }
 }
 </style>
