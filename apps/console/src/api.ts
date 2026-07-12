@@ -35,10 +35,12 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 async function post<T>(url: string, body?: unknown): Promise<T> {
+  // Only advertise a JSON body when there is one — otherwise Fastify rejects the
+  // empty payload (FST_ERR_CTP_EMPTY_JSON_BODY) on bodyless POSTs like claim/cancel.
   return json<T>(
     await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
   )
@@ -53,6 +55,15 @@ export const api = {
   },
   createTournament(name: string): Promise<Tournament> {
     return post('/api/tournaments', { name })
+  },
+  cancelTournament(id: string): Promise<Tournament> {
+    return post(`/api/tournaments/${id}/cancel`)
+  },
+  reactivateTournament(id: string): Promise<Tournament> {
+    return post(`/api/tournaments/${id}/reactivate`)
+  },
+  async deleteTournament(id: string): Promise<void> {
+    await json<{ ok: true }>(await fetch(`/api/tournaments/${id}`, { method: 'DELETE' }))
   },
   createFloor(tournamentId: string, name: string): Promise<Floor> {
     return post(`/api/tournaments/${tournamentId}/floors`, { name })

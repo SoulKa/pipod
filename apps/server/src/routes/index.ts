@@ -14,12 +14,15 @@ import {
 import { repo } from '../repo'
 import {
   addParticipant,
+  cancelTournament,
   createStage,
   createTournament,
   createFloor,
   deleteFloor,
   deleteParticipant,
+  deleteTournament,
   generateStage,
+  reactivateTournament,
   updateParticipant,
 } from '../services/tournaments'
 import { assignMatchFloor, claimMatch, reportLeg } from '../services/matches'
@@ -61,6 +64,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           memberIds: repo.listGroupMembers(g.id),
         })),
       ),
+    }
+  })
+
+  app.post('/api/tournaments/:id/cancel', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    try {
+      const tournament = cancelTournament(id)
+      broadcastSnapshot(id)
+      return tournament
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message })
+    }
+  })
+
+  app.post('/api/tournaments/:id/reactivate', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    try {
+      const tournament = reactivateTournament(id)
+      broadcastSnapshot(id)
+      return tournament
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  app.delete('/api/tournaments/:id', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    try {
+      deleteTournament(id)
+      broadcastSnapshot(id)
+      return { ok: true }
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message })
     }
   })
 

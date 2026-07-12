@@ -23,7 +23,8 @@
     "format:check": "prettier --check . --ignore-unknown"
   },
   "devDependencies": {
-    "prettier": "3.9.5"
+    "prettier": "3.9.5",
+    "vitest": "^4.1.10"
   },
   "packageManager": "yarn@4.17.1"
 }

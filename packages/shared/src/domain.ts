@@ -13,7 +13,7 @@ export type Multiplier = BoardMultiplier
 export const START_SCORES = [301, 501] as const
 export type StartScore = (typeof START_SCORES)[number]
 
-export type TournamentStatus = 'setup' | 'active' | 'completed'
+export type TournamentStatus = 'setup' | 'active' | 'completed' | 'cancelled'
 
 /** A stage is either a round-robin group phase or a knockout bracket. */
 export type StageType = 'group' | 'knockout'

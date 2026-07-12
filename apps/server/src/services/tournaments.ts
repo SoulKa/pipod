@@ -16,9 +16,11 @@ import {
   floors,
   groupMembers,
   groups,
+  legs,
   matches,
   participants,
   stages,
+  throws,
   tournaments,
 } from '../db/schema'
 import { repo } from '../repo'
@@ -34,6 +36,61 @@ export function createTournament(name: string): Tournament {
   }
   db.insert(tournaments).values(row).run()
   return row
+}
+
+/** Halt a tournament without losing its data; boards stop receiving new matches. */
+export function cancelTournament(id: string): Tournament {
+  const tournament = repo.getTournament(id)
+  if (!tournament) throw new Error('tournament not found')
+  db.update(tournaments).set({ status: 'cancelled' }).where(eq(tournaments.id, id)).run()
+  return { ...tournament, status: 'cancelled' }
+}
+
+/**
+ * Undo a cancellation. The pre-cancel status isn't stored, so derive it from the data:
+ * no matches → still in setup; all matches done → completed; otherwise active.
+ */
+export function reactivateTournament(id: string): Tournament {
+  const tournament = repo.getTournament(id)
+  if (!tournament) throw new Error('tournament not found')
+  if (tournament.status !== 'cancelled') throw new Error('tournament is not cancelled')
+  const matchList = repo.listMatches(id)
+  const status: Tournament['status'] = !matchList.length
+    ? 'setup'
+    : matchList.every((m) => m.status === 'completed')
+      ? 'completed'
+      : 'active'
+  db.update(tournaments).set({ status }).where(eq(tournaments.id, id)).run()
+  return { ...tournament, status }
+}
+
+/** Permanently delete a tournament and every row that hangs off it (no FK cascades). */
+export function deleteTournament(id: string): void {
+  if (!repo.getTournament(id)) throw new Error('tournament not found')
+
+  const matchIds = repo.listMatches(id).map((m) => m.id)
+  if (matchIds.length) {
+    const legIds = db
+      .select({ id: legs.id })
+      .from(legs)
+      .where(inArray(legs.matchId, matchIds))
+      .all()
+      .map((row) => row.id)
+    if (legIds.length) db.delete(throws).where(inArray(throws.legId, legIds)).run()
+    db.delete(legs).where(inArray(legs.matchId, matchIds)).run()
+  }
+
+  const stageIds = repo.listStages(id).map((s) => s.id)
+  const groupIds = stageIds.flatMap((stageId) => repo.listGroups(stageId).map((g) => g.id))
+  if (groupIds.length) db.delete(groupMembers).where(inArray(groupMembers.groupId, groupIds)).run()
+
+  db.delete(matches).where(eq(matches.tournamentId, id)).run()
+  if (stageIds.length) db.delete(groups).where(inArray(groups.stageId, stageIds)).run()
+  db.delete(stages).where(eq(stages.tournamentId, id)).run()
+  db.delete(floorSessions).where(eq(floorSessions.tournamentId, id)).run()
+  db.delete(floors).where(eq(floors.tournamentId, id)).run()
+  db.delete(participants).where(eq(participants.tournamentId, id)).run()
+  db.delete(tournaments).where(eq(tournaments.id, id)).run()
 }
 
 export function createFloor(tournamentId: string, name: string): Floor {

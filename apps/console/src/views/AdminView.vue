@@ -12,6 +12,7 @@ const { detail, live } = feed
 const selectedId = ref<string | null>(null)
 const activeTab = ref<AdminTab>('setup')
 const error = ref('')
+const confirming = ref<null | 'cancel' | 'delete'>(null)
 
 const newTournamentName = ref('')
 const newFloorName = ref('')
@@ -92,6 +93,47 @@ async function createTournament() {
     await loadTournaments()
     await select(tournament.id)
   })
+}
+
+async function cancelTournament() {
+  const id = selectedId.value
+  if (!id) return
+  await run(async () => {
+    await api.cancelTournament(id)
+    await feed.refresh()
+    await loadTournaments()
+  })
+}
+
+async function reactivateTournament() {
+  const id = selectedId.value
+  if (!id) return
+  await run(async () => {
+    const tournament = await api.reactivateTournament(id)
+    await feed.refresh()
+    await loadTournaments()
+    activeTab.value = defaultTab(tournament.status)
+  })
+}
+
+async function deleteTournament() {
+  const id = selectedId.value
+  if (!id) return
+  await run(async () => {
+    await api.deleteTournament(id)
+    feed.close()
+    detail.value = null
+    selectedId.value = null
+    await loadTournaments()
+  })
+}
+
+/** Run the action the confirm dialog was opened for, then close it. */
+async function confirmProceed() {
+  const kind = confirming.value
+  confirming.value = null
+  if (kind === 'cancel') await cancelTournament()
+  else if (kind === 'delete') await deleteTournament()
 }
 
 async function addParticipant() {
@@ -235,6 +277,13 @@ onUnmounted(() => feed.close())
             <RouterLink :to="`/view/${detail.tournament.id}`" target="_blank">
               Open overview ↗
             </RouterLink>
+            <template v-if="detail.tournament.status === 'cancelled'">
+              <button @click="reactivateTournament">Reactivate</button>
+              <button class="pd-button--danger" @click="confirming = 'delete'">Delete</button>
+            </template>
+            <button v-else class="pd-button--danger" @click="confirming = 'cancel'">
+              Cancel tournament
+            </button>
           </div>
         </header>
 
@@ -256,6 +305,14 @@ onUnmounted(() => feed.close())
             Tournament
           </button>
         </div>
+
+        <section v-if="detail.tournament.status === 'cancelled'" class="cancelled-summary pd-panel">
+          <div>
+            <p class="eyebrow">Tournament cancelled</p>
+            <h2>Boards won't receive new matches.</h2>
+          </div>
+          <p class="pd-muted">Reactivate to resume, or delete to remove it permanently.</p>
+        </section>
 
         <section v-if="activeTab === 'setup'" class="setup-workflow">
           <header class="workflow-heading">
@@ -570,6 +627,27 @@ onUnmounted(() => feed.close())
         </p>
       </section>
     </div>
+
+    <div v-if="confirming" class="pd-overlay" @click.self="confirming = null">
+      <div class="pd-modal confirm-modal" role="dialog" aria-modal="true">
+        <h2>
+          {{ confirming === 'cancel' ? 'Cancel this tournament?' : 'Delete this tournament?' }}
+        </h2>
+        <p class="pd-muted">
+          {{
+            confirming === 'cancel'
+              ? 'Boards will stop receiving new matches. You can reactivate it later.'
+              : 'All players, stages, matches and scores are permanently removed. This cannot be undone.'
+          }}
+        </p>
+        <div class="modal-actions">
+          <button @click="confirming = null">Keep it</button>
+          <button class="pd-button--danger" @click="confirmProceed">
+            {{ confirming === 'cancel' ? 'Cancel tournament' : 'Delete tournament' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -679,6 +757,7 @@ onUnmounted(() => feed.close())
 .operations-heading,
 .progress-card-heading,
 .completed-summary,
+.cancelled-summary,
 .stage-heading {
   display: flex;
   align-items: center;
@@ -689,6 +768,9 @@ onUnmounted(() => feed.close())
 .heading-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pd-space-2);
 }
 
 .title-row {
@@ -905,6 +987,23 @@ onUnmounted(() => feed.close())
 .completed-summary strong {
   color: var(--pd-success);
   font-variant-numeric: tabular-nums;
+}
+
+.cancelled-summary {
+  border-color: var(--pd-danger);
+  background: var(--pd-danger-soft);
+}
+
+.confirm-modal {
+  display: grid;
+  gap: var(--pd-space-3);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--pd-space-2);
+  margin-top: var(--pd-space-2);
 }
 
 .operations-surface {
