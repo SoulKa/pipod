@@ -8,7 +8,9 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "type-check": "vue-tsc --build"
+    "type-check": "vue-tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@pi-darts/shared": "*",
@@ -24,6 +26,7 @@
     "npm-run-all2": "^9.0.2",
     "typescript": "~6.0.0",
     "vite": "^8.1.4",
+    "vitest": "4.1.10",
     "vue-tsc": "^3.3.7"
   }
 }

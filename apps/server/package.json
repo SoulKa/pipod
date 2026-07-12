@@ -8,6 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:check": "drizzle-kit check --config drizzle.config.ts"
   },
@@ -26,6 +28,7 @@
     "@types/node": "^24.13.3",
     "drizzle-kit": "0.31.10",
     "tsx": "4.23.0",
-    "typescript": "~6.0.0"
+    "typescript": "~6.0.0",
+    "vitest": "4.1.10"
   }
 }

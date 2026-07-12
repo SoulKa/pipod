@@ -11,7 +11,7 @@ import * as schema from './schema'
  * reads (overview screens) from blocking writes (live throws).
  */
 function createDb() {
-  mkdirSync(env.dataDir, { recursive: true })
+  if (dbPath !== ':memory:') mkdirSync(env.dataDir, { recursive: true })
   const sqlite = new Database(dbPath)
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
