@@ -13,6 +13,7 @@ export const tournaments = sqliteTable('tournaments', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   status: text('status').$type<TournamentStatus>().notNull().default('setup'),
+  autoAssign: integer('auto_assign', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
 })
 
@@ -96,6 +97,7 @@ export const matches = sqliteTable(
     startScore: integer('start_score').notNull(),
     outMode: text('out_mode').$type<OutMode>().notNull(),
     floorId: text('floor_id'),
+    queueOrder: integer('queue_order').notNull().default(0),
     status: text('status').$type<MatchStatus>().notNull().default('pending'),
     legsA: integer('legs_a').notNull().default(0),
     legsB: integer('legs_b').notNull().default(0),

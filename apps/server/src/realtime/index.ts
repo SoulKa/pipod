@@ -10,6 +10,7 @@ import type {
 import { boardSnapshotPayloadSchema } from '@pi-darts/shared'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
+import { maybeAutoAssign } from '../services/scheduler'
 import {
   clearFloorSession,
   ensureFloorSession,
@@ -69,7 +70,8 @@ export function setupRealtime(io: IoServer): void {
         if (state) broadcastLive(tournamentId, state)
       } else {
         socket.emit('board:session', toBoardSession(session))
-        dispatchQueuedFloorMatch(tournamentId, floorId)
+        maybeAutoAssign(tournamentId)
+        dispatchQueuedFloorMatch(floorId)
       }
     })
 
@@ -148,10 +150,11 @@ export function setupRealtime(io: IoServer): void {
             if (state) broadcastLive(match.tournamentId, state)
           }
         }
-        broadcastSnapshot(match.tournamentId)
-        if (match.status === 'completed' && match.floorId) {
-          dispatchQueuedFloorMatch(match.tournamentId, match.floorId)
+        if (match.status === 'completed') {
+          maybeAutoAssign(match.tournamentId)
+          dispatchReadyFloors(match.tournamentId)
         }
+        broadcastSnapshot(match.tournamentId)
       } catch (err) {
         socket.emit('error:message', errorText(err))
       }
@@ -181,11 +184,17 @@ export function dispatchFloorMatch(match: Match): Match | null {
   return liveMatch
 }
 
-function dispatchQueuedFloorMatch(tournamentId: string, floorId: string): void {
-  const next = repo
-    .listMatches(tournamentId)
-    .find((match) => match.floorId === floorId && match.status === 'ready')
+/** Dispatch a floor's next ready match (queue order), unless a match is already live on it. */
+export function dispatchQueuedFloorMatch(floorId: string): void {
+  const queue = repo.listFloorQueue(floorId)
+  if (queue.some((match) => match.status === 'live')) return // floor is busy playing
+  const next = queue.find((match) => match.status === 'ready')
   if (next) dispatchFloorMatch(next)
+}
+
+/** Fill every idle, connected floor in a tournament with its next ready match. */
+export function dispatchReadyFloors(tournamentId: string): void {
+  for (const floor of repo.listFloors(tournamentId)) dispatchQueuedFloorMatch(floor.id)
 }
 
 function participantsFor(match: Match): { id: string; name: string }[] {

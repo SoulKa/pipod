@@ -32,6 +32,7 @@ export function createTournament(name: string): Tournament {
     id: nanoid(),
     name,
     status: 'setup',
+    autoAssign: false,
     createdAt: new Date().toISOString(),
   }
   db.insert(tournaments).values(row).run()

@@ -1,5 +1,5 @@
 // Thin typed query helpers over Drizzle. Keeps SQL-ish detail out of the services.
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Floor, Match, Participant, Stage, Tournament } from '@pi-darts/shared'
 import { db } from './db/client'
 import {
@@ -57,6 +57,16 @@ export const repo = {
       .from(matches)
       .where(eq(matches.tournamentId, tournamentId))
       .orderBy(asc(matches.round), asc(matches.slot))
+      .all()
+  },
+
+  /** A floor's still-relevant matches (ready + live) in play order. */
+  listFloorQueue(floorId: string): Match[] {
+    return db
+      .select()
+      .from(matches)
+      .where(and(eq(matches.floorId, floorId), inArray(matches.status, ['ready', 'live'])))
+      .orderBy(asc(matches.queueOrder), asc(matches.round), asc(matches.slot))
       .all()
   },
 

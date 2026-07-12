@@ -5,9 +5,11 @@ import { z } from 'zod'
 import {
   addParticipantSchema,
   assignMatchFloorSchema,
+  autoAssignToggleSchema,
   createFloorSchema,
   createStageSchema,
   createTournamentSchema,
+  reorderQueueSchema,
   reportLegSchema,
   updateParticipantSchema,
 } from '@pi-darts/shared'
@@ -25,9 +27,10 @@ import {
   reactivateTournament,
   updateParticipant,
 } from '../services/tournaments'
-import { assignMatchFloor, claimMatch, reportLeg } from '../services/matches'
+import { assignMatchFloor, claimMatch, reorderFloorQueue, reportLeg } from '../services/matches'
+import { maybeAutoAssign, runAutoAssign, setAutoAssign } from '../services/scheduler'
 import { broadcastMatch, broadcastSnapshot } from '../realtime/hub'
-import { dispatchFloorMatch } from '../realtime'
+import { dispatchQueuedFloorMatch, dispatchReadyFloors } from '../realtime'
 
 /** Options accepted by the stage-generate endpoint. */
 const generateOptsSchema = z.object({
@@ -114,6 +117,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!repo.getTournament(id)) return reply.code(404).send({ error: 'not found' })
     const { name } = createFloorSchema.parse(req.body)
     const floor = createFloor(id, name)
+    maybeAutoAssign(id)
+    dispatchReadyFloors(id)
     broadcastSnapshot(id)
     return reply.code(201).send(floor)
   })
@@ -165,6 +170,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!stage) return reply.code(404).send({ error: 'not found' })
     const opts = generateOptsSchema.parse(req.body ?? {})
     const matches = generateStage(id, opts)
+    maybeAutoAssign(stage.tournamentId)
+    dispatchReadyFloors(stage.tournamentId)
     broadcastSnapshot(stage.tournamentId)
     return matches
   })
@@ -183,15 +190,50 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/matches/:id/floor', async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { floorId } = assignMatchFloorSchema.parse(req.body)
+    const { floorId, position } = assignMatchFloorSchema.parse(req.body)
     try {
-      const assigned = assignMatchFloor(id, floorId)
-      const match = dispatchFloorMatch(assigned) ?? assigned
-      if (match === assigned) {
-        broadcastMatch(match)
-        broadcastSnapshot(match.tournamentId)
-      }
+      const assigned = assignMatchFloor(id, floorId, position)
+      // An idle connected floor starts its front match; a busy floor just queues this one.
+      if (floorId) dispatchQueuedFloorMatch(floorId)
+      const match = repo.getMatch(id) ?? assigned
+      broadcastMatch(match)
+      broadcastSnapshot(match.tournamentId)
       return match
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  app.post('/api/tournaments/:id/autoassign', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    if (!repo.getTournament(id)) return reply.code(404).send({ error: 'not found' })
+    runAutoAssign(id)
+    dispatchReadyFloors(id)
+    broadcastSnapshot(id)
+    return { ok: true }
+  })
+
+  app.post('/api/tournaments/:id/auto-assign', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { enabled } = autoAssignToggleSchema.parse(req.body)
+    try {
+      const tournament = setAutoAssign(id, enabled)
+      dispatchReadyFloors(id)
+      broadcastSnapshot(id)
+      return tournament
+    } catch (err) {
+      return reply.code(404).send({ error: (err as Error).message })
+    }
+  })
+
+  app.post('/api/floors/:id/queue', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { matchIds } = reorderQueueSchema.parse(req.body)
+    try {
+      const tournamentId = repo.getFloor(id)?.tournamentId
+      reorderFloorQueue(id, matchIds)
+      if (tournamentId) broadcastSnapshot(tournamentId)
+      return { ok: true }
     } catch (err) {
       return reply.code(400).send({ error: (err as Error).message })
     }
@@ -203,6 +245,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     try {
       const { match, changed } = reportLeg(id, legIndex, winnerId)
       for (const m of changed) broadcastMatch(m)
+      if (match.status === 'completed') {
+        maybeAutoAssign(match.tournamentId)
+        dispatchReadyFloors(match.tournamentId)
+      }
       broadcastSnapshot(match.tournamentId)
       return match
     } catch (err) {

@@ -36,6 +36,8 @@ export interface Tournament {
   id: string
   name: string
   status: TournamentStatus
+  /** When true, ready matches are auto-assigned to free floors as capacity opens up. */
+  autoAssign: boolean
   /** ISO-8601 timestamp. */
   createdAt: string
 }
@@ -97,6 +99,8 @@ export interface Match {
   outMode: OutMode
   /** Physical floor selected by the console; null until the match is assigned. */
   floorId: string | null
+  /** Position within its floor's queue; lower plays first. 0 while unassigned. */
+  queueOrder: number
   status: MatchStatus
   /** Legs won by A / B so far. */
   legsA: number

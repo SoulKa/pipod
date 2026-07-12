@@ -44,6 +44,7 @@ function match(id: string, over: Partial<Match> = {}): Match {
     startScore: 501,
     outMode: 'double',
     floorId: null,
+    queueOrder: 0,
     status: 'ready',
     legsA: 0,
     legsB: 0,
@@ -56,7 +57,7 @@ function match(id: string, over: Partial<Match> = {}): Match {
 
 function detail(matches: Match[]): TournamentDetail {
   return {
-    tournament: { id: 't1', name: 'Cup', status: 'active', createdAt: 'now' },
+    tournament: { id: 't1', name: 'Cup', status: 'active', autoAssign: false, createdAt: 'now' },
     floors: [],
     participants: [],
     stages: [],

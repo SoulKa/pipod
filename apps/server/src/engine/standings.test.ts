@@ -17,6 +17,7 @@ function match(over: Partial<Match>): Match {
     startScore: 501,
     outMode: 'double',
     floorId: null,
+    queueOrder: 0,
     status: 'completed',
     legsA: 0,
     legsB: 0,

@@ -23,9 +23,24 @@ export const createFloorSchema = z.object({
 export type CreateFloorInput = z.infer<typeof createFloorSchema>
 
 export const assignMatchFloorSchema = z.object({
-  floorId: z.string().min(1),
+  /** null clears the assignment, sending the match back to the unassigned backlog. */
+  floorId: z.string().min(1).nullable(),
+  /** Insertion index within the target floor's queue; appended when omitted. */
+  position: z.number().int().min(0).optional(),
 })
 export type AssignMatchFloorInput = z.infer<typeof assignMatchFloorSchema>
+
+/** Rewrite a floor's queue order from a full list of its match ids (front to back). */
+export const reorderQueueSchema = z.object({
+  matchIds: z.string().array(),
+})
+export type ReorderQueueInput = z.infer<typeof reorderQueueSchema>
+
+/** Toggle a tournament's auto-fill scheduling. */
+export const autoAssignToggleSchema = z.object({
+  enabled: z.boolean(),
+})
+export type AutoAssignToggleInput = z.infer<typeof autoAssignToggleSchema>
 
 export const addParticipantSchema = z.object({
   name: z.string().min(1).max(60),

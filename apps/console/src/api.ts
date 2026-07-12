@@ -89,8 +89,17 @@ export const api = {
   claimMatch(id: string): Promise<Match> {
     return post(`/api/matches/${id}/claim`)
   },
-  assignMatchFloor(id: string, floorId: string): Promise<Match> {
-    return post(`/api/matches/${id}/floor`, { floorId })
+  assignMatchFloor(id: string, floorId: string | null, position?: number): Promise<Match> {
+    return post(`/api/matches/${id}/floor`, { floorId, position })
+  },
+  autoAssign(tournamentId: string): Promise<{ ok: true }> {
+    return post(`/api/tournaments/${tournamentId}/autoassign`)
+  },
+  setAutoFill(tournamentId: string, enabled: boolean): Promise<Tournament> {
+    return post(`/api/tournaments/${tournamentId}/auto-assign`, { enabled })
+  },
+  reorderFloorQueue(floorId: string, matchIds: string[]): Promise<{ ok: true }> {
+    return post(`/api/floors/${floorId}/queue`, { matchIds })
   },
   reportLeg(id: string, legIndex: number, winnerId: string): Promise<Match> {
     return post(`/api/matches/${id}/legs`, { legIndex, winnerId })

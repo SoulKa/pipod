@@ -3,6 +3,7 @@ import { computed, onUnmounted, reactive, ref } from 'vue'
 import type { OutMode, StageType, StartScore, Tournament, TournamentStatus } from '@pi-darts/shared'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
+import ScheduleBoard from '../components/ScheduleBoard.vue'
 
 type AdminTab = 'setup' | 'tournament'
 
@@ -180,15 +181,6 @@ async function addFloor() {
 async function removeFloor(id: string) {
   await run(async () => {
     await api.deleteFloor(id)
-    await feed.refresh()
-  })
-}
-
-async function assignFloor(matchId: string, event: Event) {
-  const floorId = (event.target as HTMLSelectElement).value
-  if (!floorId) return
-  await run(async () => {
-    await api.assignMatchFloor(matchId, floorId)
     await feed.refresh()
   })
 }
@@ -495,55 +487,12 @@ onUnmounted(() => feed.close())
             <strong>{{ completedMatches.length }} Matches gespielt</strong>
           </section>
 
-          <section class="operations-surface">
-            <div class="operations-heading">
-              <div>
-                <p class="eyebrow">Feldsteuerung</p>
-                <h2>Spielbereit</h2>
-              </div>
-              <span class="ready-count">{{ readyMatches.length }} bereit</span>
-            </div>
-            <div v-if="readyMatches.length" class="ready-match-grid">
-              <article v-for="match in readyMatches" :key="match.id" class="pd-panel ready-match">
-                <div class="ready-match-meta">
-                  <span>{{
-                    stagesWithMatches.find((item) => item.stage.id === match.stageId)?.stage.name
-                  }}</span>
-                  <span>Runde {{ match.round + 1 }}</span>
-                </div>
-                <div class="ready-matchup">
-                  <strong>{{ nameOf(match.participantAId) }}</strong>
-                  <span>vs</span>
-                  <strong>{{ nameOf(match.participantBId) }}</strong>
-                </div>
-                <p class="pd-muted">
-                  {{ match.startScore }} · {{ outModeLabel(match.outMode) }} · Best of {{ match.bestOf }}
-                </p>
-                <label class="floor-select">
-                  <span>Spielen auf</span>
-                  <select
-                    :value="match.floorId ?? ''"
-                    :disabled="!detail.floors.length"
-                    @change="assignFloor(match.id, $event)"
-                  >
-                    <option value="">Feld auswählen</option>
-                    <option v-for="floor in detail.floors" :key="floor.id" :value="floor.id">
-                      {{ floor.name }}
-                    </option>
-                  </select>
-                </label>
-              </article>
-            </div>
-            <div v-else class="pd-panel pd-panel--compact operations-empty">
-              <p class="pd-muted">
-                {{
-                  detail.tournament.status === 'completed'
-                    ? 'Keine Matches mehr übrig.'
-                    : 'Noch kein Match bereit. Beobachte unten den Phasenfortschritt für die nächste Freigabe.'
-                }}
-              </p>
-            </div>
-          </section>
+          <ScheduleBoard
+            :detail="detail"
+            :live="live"
+            @refresh="feed.refresh()"
+            @error="error = $event"
+          />
 
           <section class="secondary-status">
             <article class="pd-panel pd-panel--compact status-panel">
@@ -906,7 +855,7 @@ onUnmounted(() => feed.close())
 }
 
 .player-create {
-  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  grid-template-columns: minmax(0, 1fr) 9rem auto;
 }
 
 .remove-button {
@@ -1213,7 +1162,7 @@ onUnmounted(() => feed.close())
 
 @media (min-width: 75rem) {
   .admin-shell {
-    grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
   }
 
   .tournament-rail {
@@ -1257,7 +1206,7 @@ onUnmounted(() => feed.close())
   }
 
   .player-create {
-    grid-template-columns: minmax(0, 1fr) 5rem;
+    grid-template-columns: minmax(0, 1fr) 7rem;
   }
 
   .player-create input:first-child {

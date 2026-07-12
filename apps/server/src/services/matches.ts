@@ -21,17 +21,67 @@ export function claimMatch(matchId: string): Match {
   return repo.getMatch(matchId)!
 }
 
-/** Attach a ready match to a floor. Dispatch changes it to live when its board connects. */
-export function assignMatchFloor(matchId: string, floorId: string): Match {
+/** Write sequential queue positions (0-based) to the given matches, front to back. */
+function writeQueueOrder(matchIds: string[]): void {
+  matchIds.forEach((id, i) => {
+    db.update(matches).set({ queueOrder: i }).where(eq(matches.id, id)).run()
+  })
+}
+
+/** Renumber a floor's ready matches so their queue positions stay contiguous. */
+function renumberFloorQueue(floorId: string): void {
+  const ready = repo.listFloorQueue(floorId).filter((m) => m.status === 'ready')
+  writeQueueOrder(ready.map((m) => m.id))
+}
+
+/**
+ * Attach a ready match to a floor at an optional queue position, or send it back to
+ * the unassigned backlog when `floorId` is null. Dispatch changes it to live when the
+ * floor's board is free. Only `ready` matches move; live/completed are locked.
+ */
+export function assignMatchFloor(
+  matchId: string,
+  floorId: string | null,
+  position?: number,
+): Match {
   const match = repo.getMatch(matchId)
   if (!match) throw new Error('match not found')
   if (match.status !== 'ready') throw new Error('only ready matches can be assigned')
+  const previousFloorId = match.floorId
+
+  if (floorId === null) {
+    db.update(matches).set({ floorId: null, queueOrder: 0 }).where(eq(matches.id, matchId)).run()
+    if (previousFloorId) renumberFloorQueue(previousFloorId)
+    return repo.getMatch(matchId)!
+  }
+
   const floor = repo.getFloor(floorId)
   if (!floor || floor.tournamentId !== match.tournamentId) {
     throw new Error('floor does not belong to this tournament')
   }
+
+  // Splice this match into the target floor's ready queue at the requested position.
+  const queue = repo
+    .listFloorQueue(floorId)
+    .filter((m) => m.status === 'ready' && m.id !== matchId)
+  const index = Math.max(0, Math.min(position ?? queue.length, queue.length))
+  const ordered = [...queue.slice(0, index), match, ...queue.slice(index)]
+
   db.update(matches).set({ floorId }).where(eq(matches.id, matchId)).run()
+  writeQueueOrder(ordered.map((m) => m.id))
+  if (previousFloorId && previousFloorId !== floorId) renumberFloorQueue(previousFloorId)
   return repo.getMatch(matchId)!
+}
+
+/** Rewrite a floor's ready-match play order from a full, front-to-back id list. */
+export function reorderFloorQueue(floorId: string, matchIds: string[]): void {
+  const floor = repo.getFloor(floorId)
+  if (!floor) throw new Error('floor not found')
+  const onFloor = new Set(
+    repo.listFloorQueue(floorId).filter((m) => m.status === 'ready').map((m) => m.id),
+  )
+  const ordered = matchIds.filter((id) => onFloor.has(id))
+  writeQueueOrder(ordered)
 }
 
 /** Start a floor-assigned match only after dispatching it to that floor's board. */

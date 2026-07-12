@@ -1170,6 +1170,7 @@ __metadata:
     vite: "npm:^8.1.4"
     vitest: "npm:4.1.10"
     vue: "npm:^3.5.39"
+    vue-draggable-plus: "npm:0.6.1"
     vue-router: "npm:5.1.0"
     vue-tsc: "npm:^3.3.7"
   languageName: unknown
@@ -1429,6 +1430,13 @@ __metadata:
   dependencies:
     undici-types: "npm:~7.18.0"
   checksum: 10c0/a5bc08f49b9581dcdca90e02cd77197a3c799840807664942e5cd5161a553d4d2ae8064f7e3294410d748d7d098b5c1848be7fa50c06f29c4193ab16be4e59eb
+  languageName: node
+  linkType: hard
+
+"@types/sortablejs@npm:^1.15.8":
+  version: 1.15.9
+  resolution: "@types/sortablejs@npm:1.15.9"
+  checksum: 10c0/d8ddf3da28a84a023d3003aa64b6495a7112e3945ac05d937afdb7c182b04a1025f126b2977ed8d5a9ede229b4bab85f037efbc97fde8a71128e056ac3122fa9
   languageName: node
   linkType: hard
 
@@ -4602,6 +4610,20 @@ __metadata:
   version: 3.1.0
   resolution: "vscode-uri@npm:3.1.0"
   checksum: 10c0/5f6c9c10fd9b1664d71fab4e9fbbae6be93c7f75bb3a1d9d74399a88ab8649e99691223fd7cef4644376cac6e94fa2c086d802521b9a8e31c5af3e60f0f35624
+  languageName: node
+  linkType: hard
+
+"vue-draggable-plus@npm:0.6.1":
+  version: 0.6.1
+  resolution: "vue-draggable-plus@npm:0.6.1"
+  dependencies:
+    "@types/sortablejs": "npm:^1.15.8"
+  peerDependencies:
+    "@types/sortablejs": ^1.15.0
+  peerDependenciesMeta:
+    "@vue/composition-api":
+      optional: true
+  checksum: 10c0/33d065aa6ea7890ff979391604100895269f71ebd035570a9b554148dbab067ede08ec6306de8d746f63fc281db4b754e09bcda21dd8aefa4a7da2e69af13ebf
   languageName: node
   linkType: hard
 
