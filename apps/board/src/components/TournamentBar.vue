@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { resolveTournamentParams, updateTournamentParams } from '../appMode'
 import { useTournamentClient } from '../game/tournamentClient'
 
 const client = useTournamentClient()
-const open = ref(false)
 const host = ref('')
 const step = ref<'host' | 'tournament' | 'floor'>('host')
-const { connected, tournaments, floors, errorMsg } = client
+const { connected, floorId, tournaments, floors, errorMsg } = client
 const hostLabel = computed(() => host.value || 'Host IP')
 
 function key(value: string) {
@@ -16,21 +16,44 @@ function key(value: string) {
 }
 function connect() {
   client.connect(host.value)
+  // Persist the host (and the auto-generated board id) and drop any stale
+  // downstream selection so a reload resumes from the tournament step.
+  updateTournamentParams({
+    ip: host.value,
+    boardId: client.boardId.value,
+    tournamentId: undefined,
+    floorId: undefined,
+  })
   step.value = 'tournament'
 }
 async function chooseTournament(id: string) {
   await client.selectTournament(id)
+  updateTournamentParams({ tournamentId: id, floorId: undefined })
   step.value = 'floor'
 }
 function chooseFloor(id: string) {
   client.selectFloor(id)
-  open.value = false
+  updateTournamentParams({ floorId: id })
 }
+
+// Prefill the wizard from the launch URL, skipping each step that's already
+// answered. Prefix-based: without `ip` there's nothing to connect to, so a
+// later param can't be used and the wizard falls back to manual entry.
+onMounted(async () => {
+  const p = resolveTournamentParams()
+  if (p.boardId) client.setBoardId(p.boardId)
+  if (!p.ip) return
+  host.value = p.ip
+  connect()
+  if (!p.tournamentId) return
+  await chooseTournament(p.tournamentId)
+  if (!p.floorId) return
+  chooseFloor(p.floorId)
+})
 </script>
 
 <template>
-  <button class="join" @click="open = true">Tournament connection</button>
-  <div v-if="open" class="wizard">
+  <div v-if="!floorId" class="wizard">
     <section class="card">
       <header>
         <button
@@ -75,16 +98,13 @@ function chooseFloor(id: string) {
         </button>
       </template>
       <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
-      <button class="cancel" @click="open = false">Cancel</button>
     </section>
   </div>
 </template>
 
 <style scoped>
-.join,
 .primary,
 .choice,
-.cancel,
 .back,
 .pad button {
   min-height: 64px;
@@ -92,15 +112,6 @@ function chooseFloor(id: string) {
   border-radius: 16px;
   font: 800 24px inherit;
   cursor: pointer;
-}
-.join {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  z-index: 10;
-  padding: 16px 22px;
-  background: #334155;
-  color: #e2e8f0;
 }
 .wizard {
   position: absolute;
@@ -158,7 +169,6 @@ function chooseFloor(id: string) {
   text-align: left;
   padding: 20px;
 }
-.cancel,
 .back {
   background: transparent;
   color: #94a3b8;

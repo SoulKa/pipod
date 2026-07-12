@@ -16,7 +16,7 @@ type BoardSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 const socket = shallowRef<BoardSocket | null>(null)
 const connected = ref(false)
 const serverUrl = ref('')
-const boardId = ref(crypto.randomUUID())
+const boardId = ref<string>(crypto.randomUUID())
 const tournaments = ref<Tournament[]>([])
 const tournamentId = ref('')
 const floors = ref<Floor[]>([])
@@ -47,6 +47,10 @@ async function selectTournament(id: string): Promise<void> {
   const response = await fetch(`${serverUrl.value}/api/tournaments/${id}`)
   if (!response.ok) throw new Error('could not load tournament floors')
   floors.value = ((await response.json()) as { floors: Floor[] }).floors
+}
+
+function setBoardId(id: string): void {
+  if (id) boardId.value = id
 }
 
 function selectFloor(id: string): void {
@@ -117,6 +121,7 @@ export function useTournamentClient() {
   return {
     connected,
     serverUrl,
+    boardId,
     tournaments,
     tournamentId,
     floors,
@@ -125,6 +130,7 @@ export function useTournamentClient() {
     session,
     errorMsg,
     connect,
+    setBoardId,
     selectTournament,
     selectFloor,
     saveSnapshot,
