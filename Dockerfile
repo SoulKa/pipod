@@ -7,8 +7,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/board/package.json apps/board/
-COPY apps/console/package.json apps/console/
-COPY apps/server/package.json apps/server/
+COPY standalone/console/package.json standalone/console/
+COPY standalone/server/package.json standalone/server/
 
 # Install all workspace deps (build tools available here for native better-sqlite3).
 RUN npm install
@@ -24,7 +24,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
     DATA_DIR=/data \
-    CONSOLE_DIR=/app/apps/console/dist
+    CONSOLE_DIR=/app/standalone/console/dist
 
 # Bring over the installed workspace (incl. tsx runtime) and built console bundle.
 COPY --from=build /app /app

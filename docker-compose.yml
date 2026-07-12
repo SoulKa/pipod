@@ -9,7 +9,7 @@ services:
       PORT: 3000
       HOST: 0.0.0.0
       DATA_DIR: /data
-      CONSOLE_DIR: /app/apps/console/dist
+      CONSOLE_DIR: /app/standalone/console/dist
     volumes:
       - pi-darts-data:/data
     restart: unless-stopped

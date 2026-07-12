@@ -35,20 +35,20 @@ or `yarn workspace @pi-darts/shared type-check`.
   in `game/tournamentClient.ts` layers on top of that engine: the board remains authoritative for
   scoring a live leg, then streams throws and reports completed legs to the server. Offline play
   must remain independent of the tournament connection.
-- `apps/console` is the Vue Router tournament management and overview app. Its typed REST client
+- `standalone/console` is the Vue Router tournament management and overview app. Its typed REST client
   calls `/api`; its Socket.IO client receives tournament snapshots and live-match updates. In
   development, its Vite proxy forwards both `/api` and `/socket.io` to `SERVER_URL` (default
   `http://localhost:3000`).
-- `apps/server` exposes the Fastify REST API and Socket.IO on one port. Routes validate request
+- `standalone/server` exposes the Fastify REST API and Socket.IO on one port. Routes validate request
   bodies with schemas from `@pi-darts/shared`, services mutate SQLite through Drizzle, and
   `realtime/` broadcasts snapshots, match changes, and the in-memory live-score mirror. It can
   serve a built console SPA when `CONSOLE_DIR` is set; SQLite lives at
   `${DATA_DIR:-./data}/pi-darts.db`. Drizzle applies committed migrations at startup; define
-  table and index changes only in `apps/server/src/db/schema.ts`, then generate a migration.
+  table and index changes only in `standalone/server/src/db/schema.ts`, then generate a migration.
 - `packages/shared` is the contract boundary: domain models, Zod request schemas, and typed
   Socket.IO event maps are exported from its root. Change these contracts before adapting server
   and client code, and keep all three consumers aligned.
-- Tournament scheduling math is pure under `apps/server/src/engine`; orchestration in
+- Tournament scheduling math is pure under `standalone/server/src/engine`; orchestration in
   `services/tournaments.ts` persists generated round-robin groups or knockout brackets. Match
   lifecycle and bracket advancement belong in `services/matches.ts`.
 
