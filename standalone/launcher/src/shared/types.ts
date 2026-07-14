@@ -58,8 +58,6 @@ export interface UpdateProgress {
 export interface LauncherSettings {
   /** Auto-apply newer bundles on launch when a release is reachable. */
   autoUpdateOnLaunch: boolean
-  /** Server host the board app should talk to (persisted so the operator sets it once). */
-  boardServerUrl: string
 }
 
 /** The typed API the preload exposes on window.launcher; implemented in preload, consumed by the renderer. */

@@ -4,7 +4,7 @@ import type { LauncherSettings } from '../../../shared/types'
 
 defineEmits<{ close: [] }>()
 
-const settings = ref<LauncherSettings>({ autoUpdateOnLaunch: true, boardServerUrl: '' })
+const settings = ref<LauncherSettings>({ autoUpdateOnLaunch: true })
 const saved = ref(false)
 
 onMounted(async () => {
@@ -14,7 +14,6 @@ onMounted(async () => {
 async function save(): Promise<void> {
   settings.value = await window.launcher.setSettings({
     autoUpdateOnLaunch: settings.value.autoUpdateOnLaunch,
-    boardServerUrl: settings.value.boardServerUrl.trim(),
   })
   saved.value = true
   setTimeout(() => (saved.value = false), 2000)
@@ -30,15 +29,6 @@ async function save(): Promise<void> {
       </header>
 
       <div class="body">
-        <label class="field">
-          <span class="label">Server host (for the board app)</span>
-          <input
-            v-model="settings.boardServerUrl"
-            type="text"
-            placeholder="e.g. 192.168.1.20:3000"
-          />
-        </label>
-
         <label class="toggle">
           <input v-model="settings.autoUpdateOnLaunch" type="checkbox" />
           <span>Auto-update apps on launch</span>
@@ -90,27 +80,6 @@ async function save(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.label {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-input[type='text'] {
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  min-height: 44px;
-  padding: 0 14px;
 }
 
 .toggle {

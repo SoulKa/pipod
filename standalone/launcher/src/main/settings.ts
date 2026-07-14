@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import type { LauncherSettings } from '../shared/types'
 
-const DEFAULTS: LauncherSettings = { autoUpdateOnLaunch: true, boardServerUrl: '' }
+const DEFAULTS: LauncherSettings = { autoUpdateOnLaunch: true }
 
 function settingsPath(): string {
   return join(app.getPath('userData'), 'settings.json')
