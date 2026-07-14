@@ -6,7 +6,7 @@ import { AppStore } from './appStore'
 import { handlePiappProtocol, registerPiappScheme } from './protocol'
 import { PIAPP_SCHEME } from './config'
 import { loadSettings, saveSettings } from './settings'
-import { HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '../shared/constants'
+import { HOME_BUTTON_CSS, HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '../shared/constants'
 import type { LauncherSettings, UpdateProgress } from '../shared/types'
 
 // Serve installed app bundles over piapp://. Must be registered before app 'ready'.
@@ -21,6 +21,8 @@ const store = new AppStore()
 let mainWindow: BrowserWindow | null = null
 let appView: WebContentsView | null = null
 let homeButton: WebContentsView | null = null
+// The running app can hide the default Home overlay (it renders its own); reset per launch.
+let homeHidden = false
 
 /** Keep a webContents zoomed to DEV_SCALE across every (re)load. */
 function keepZoomed(wc: Electron.WebContents): void {
@@ -91,6 +93,24 @@ function layoutViews(): void {
   })
 }
 
+/**
+ * Show/hide the default Home overlay while an app is running. Apps that render their own Home
+ * button hide it (via `fetch('/.launcher/home-button?hidden=1')`) so there aren't two. The overlay
+ * view is kept warm either way; at the home grid it stays detached regardless.
+ */
+function setDefaultHomeHidden(hidden: boolean): void {
+  if (!mainWindow) return
+  homeHidden = hidden
+  const cv = mainWindow.contentView
+  const home = ensureHomeButton()
+  if (hidden) {
+    if (cv.children.includes(home)) cv.removeChildView(home)
+  } else if (appView) {
+    if (!cv.children.includes(home)) cv.addChildView(home)
+    layoutViews()
+  }
+}
+
 /** Create the floating Home button overlay once and keep it warm across launches. */
 function ensureHomeButton(): WebContentsView {
   if (!homeButton) {
@@ -122,6 +142,16 @@ function launchApp(id: string, query?: string): void {
   const next = new WebContentsView({ webPreferences: { sandbox: true, webSecurity: false } })
   next.setBackgroundColor('#0f172a') // neutral dark in case any sub-frame gap shows through
   keepZoomed(next.webContents)
+  // Offer the default Home-button look as `.piapp-home` so an app can render its own button
+  // without copying CSS. Re-injected on in-app reloads (fires again on each load).
+  next.webContents.on('did-finish-load', () => void next.webContents.insertCSS(HOME_BUTTON_CSS))
+  // If the app tears down its own webContents (e.g. a legacy window.close()), return home cleanly
+  // instead of leaving a dangling view + orphaned overlay that later crashes goHome().
+  next.webContents.on('destroyed', () => {
+    if (appView === next) goHome()
+  })
+  // Each launch starts with the default overlay visible; an app re-hides it on mount if it wants.
+  homeHidden = false
   // Lay out at the full panel up front so the first paint (while still detached) is correct.
   const { width, height } = mainWindow.getContentBounds()
   next.setBounds({ x: 0, y: 0, width, height })
@@ -140,10 +170,10 @@ function launchApp(id: string, query?: string): void {
     }
     const cv = mainWindow.contentView
     cv.addChildView(next)
-    // (Re-)stack the Home button on top of the freshly added app view.
+    // (Re-)stack the Home button on top of the freshly added app view — unless the app hid it.
     const home = ensureHomeButton()
     if (cv.children.includes(home)) cv.removeChildView(home)
-    cv.addChildView(home)
+    if (!homeHidden) cv.addChildView(home)
     layoutViews()
     if (previous) {
       cv.removeChildView(previous)
@@ -165,7 +195,9 @@ function goHome(): void {
   if (homeButton && cv.children.includes(homeButton)) cv.removeChildView(homeButton)
   if (appView) {
     if (cv.children.includes(appView)) cv.removeChildView(appView)
-    appView.webContents.close()
+    // The webContents may already be gone (the app closed itself) — only close a live one.
+    const wc = appView.webContents
+    if (wc && !wc.isDestroyed()) wc.close()
     appView = null
   }
   mainWindow.webContents.send('launcher:activeApp', null)
@@ -194,7 +226,7 @@ app.whenReady().then(async () => {
 
   // Load installed bundles (seeding on first run), then serve them over piapp:// and wire IPC.
   await store.init()
-  handlePiappProtocol(store)
+  handlePiappProtocol(store, { goHome, setDefaultHomeHidden })
   registerIpc()
   createWindow()
 

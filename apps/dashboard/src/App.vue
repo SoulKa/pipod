@@ -18,7 +18,8 @@ const currentTime = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 
 function closeApp() {
-  window.close()
+  // In the launcher this returns to the home grid; harmless (404, swallowed) when run standalone.
+  void fetch('/.launcher/home', { method: 'POST' }).catch(() => {})
 }
 
 const { themeSymbol, cycleTheme } = useTheme(weather, currentTime)
