@@ -1,14 +1,6 @@
 // Shared data shapes for the launcher store, imported type-only by main, preload, and renderer.
 // These mirror the manifest.json produced by scripts/build-manifest.mjs.
 
-/** An extra launch tile for an app: the same bundle opened with a fixed query (e.g. tournament mode). */
-export interface LaunchShortcut {
-  id: string
-  name: string
-  query: string
-  icon?: string
-}
-
 export interface ManifestApp {
   id: string
   name: string
@@ -18,7 +10,8 @@ export interface ManifestApp {
   sha256: string
   size: number
   icon?: string
-  shortcuts?: LaunchShortcut[]
+  /** Query string appended to the bundle's index.html at launch (e.g. `mode=tournament`). */
+  query?: string
 }
 
 export interface Manifest {
@@ -34,9 +27,9 @@ export interface InstalledApp {
   version: string
   sha256: string
   installedAt: string
-  /** Persisted from the manifest so the home grid can label + render shortcut tiles offline. */
+  /** Persisted from the manifest so the home grid can label + launch the app offline. */
   name?: string
-  shortcuts?: LaunchShortcut[]
+  query?: string
 }
 
 /** One row in the launcher store view: installed state merged with the remote manifest. */
@@ -49,7 +42,6 @@ export interface CatalogEntry {
   installedVersion: string | null
   availableVersion: string | null
   updateAvailable: boolean
-  shortcuts?: LaunchShortcut[]
 }
 
 /** Progress emitted while installing/updating an app. */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import type { CatalogEntry, InstalledApp, UpdateProgress } from '../../shared/types'
 import StorePanel from './components/StorePanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
@@ -24,33 +24,6 @@ const disposers: Array<() => void> = []
 function nameOf(id: string): string {
   return catalog.value.find((c) => c.id === id)?.name ?? id
 }
-
-/** A home-grid tile: an installed bundle opened directly, or a shortcut (same bundle + query). */
-interface Tile {
-  key: string
-  bundleId: string
-  name: string
-  version: string
-  query?: string
-}
-
-// One tile per installed bundle, plus an extra tile per declared shortcut. Shortcuts come from the
-// persisted install metadata (offline) or the fetched catalog when the bundle predates them.
-const tiles = computed<Tile[]>(() =>
-  installed.value.flatMap((app) => {
-    const shortcuts = app.shortcuts ?? catalog.value.find((c) => c.id === app.id)?.shortcuts ?? []
-    return [
-      { key: app.id, bundleId: app.id, name: app.name ?? nameOf(app.id), version: app.version },
-      ...shortcuts.map((sc) => ({
-        key: sc.id,
-        bundleId: app.id,
-        name: sc.name,
-        version: app.version,
-        query: sc.query
-      }))
-    ]
-  })
-)
 
 function toast(text: string): void {
   const id = ++toastSeq
@@ -121,15 +94,15 @@ onUnmounted(() => disposers.forEach((d) => d()))
 
     <main class="grid">
       <button
-        v-for="tile in tiles"
-        :key="tile.key"
+        v-for="app in installed"
+        :key="app.id"
         class="tile"
-        @click="launch(tile.bundleId, tile.query)"
+        @click="launch(app.id, app.query)"
       >
-        <span class="tile-name">{{ tile.name }}</span>
-        <span class="tile-version">v{{ tile.version }}</span>
+        <span class="tile-name">{{ app.name ?? nameOf(app.id) }}</span>
+        <span class="tile-version">v{{ app.version }}</span>
       </button>
-      <p v-if="!tiles.length" class="empty">No apps installed yet — open the Store.</p>
+      <p v-if="!installed.length" class="empty">No apps installed yet — open the Store.</p>
     </main>
 
     <StorePanel

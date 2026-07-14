@@ -39,32 +39,42 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
   if (!existsSync(pkgPath)) continue
 
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-  const id = pkg.name.replace(/^@[^/]+\//, '')
   const distDir = join(appDir, 'dist')
   if (!existsSync(distDir)) {
     throw new Error(`No build output at ${distDir} — build ${pkg.name} before generating the manifest.`)
   }
-
-  const meta = pkg.piDarts ?? {}
   const version = pkg.version
-  const artifact = `${id}-${version}.tar.gz`
-  const artifactPath = join(outDir, artifact)
 
-  // Tar the dist contents (not the dist dir itself) so extraction lands files at the app root.
-  execFileSync('tar', ['-czf', artifactPath, '-C', distDir, '.'])
-  const buf = readFileSync(artifactPath)
+  // Each <id>.app.json is one launcher entry. Several may share a dir (and thus the same dist),
+  // e.g. board + board-tournament — the id comes from the filename, not the package name.
+  const descriptors = readdirSync(appDir)
+    // `tsconfig.app.json` shares the suffix but isn't an app descriptor — exclude TS configs.
+    .filter((f) => f.endsWith('.app.json') && !f.startsWith('tsconfig'))
+    .sort((a, b) => a.localeCompare(b))
+  if (descriptors.length === 0) continue
 
-  apps.push({
-    id,
-    name: meta.displayName ?? pkg.description ?? id,
-    description: meta.description ?? pkg.description ?? '',
-    version,
-    artifact,
-    sha256: createHash('sha256').update(buf).digest('hex'),
-    size: buf.length,
-    ...(meta.icon ? { icon: meta.icon } : {}),
-    ...(meta.shortcuts ? { shortcuts: meta.shortcuts } : {}),
-  })
+  for (const file of descriptors) {
+    const id = file.slice(0, -'.app.json'.length)
+    const meta = JSON.parse(readFileSync(join(appDir, file), 'utf8'))
+    const artifact = `${id}-${version}.tar.gz`
+    const artifactPath = join(outDir, artifact)
+
+    // Tar the dist contents (not the dist dir itself) so extraction lands files at the app root.
+    execFileSync('tar', ['-czf', artifactPath, '-C', distDir, '.'])
+    const buf = readFileSync(artifactPath)
+
+    apps.push({
+      id,
+      name: meta.displayName ?? pkg.description ?? id,
+      description: meta.description ?? pkg.description ?? '',
+      version,
+      artifact,
+      sha256: createHash('sha256').update(buf).digest('hex'),
+      size: buf.length,
+      ...(meta.icon ? { icon: meta.icon } : {}),
+      ...(meta.query ? { query: meta.query } : {}),
+    })
+  }
 }
 
 if (apps.length === 0) {

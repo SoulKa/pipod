@@ -3,14 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "piDarts": {
-    "displayName": "Darts Board",
-    "description": "Touch-first darts scoreboard",
-    "icon": "favicon.ico",
-    "shortcuts": [
-      { "id": "board-tournament", "name": "Tournament Board", "query": "mode=tournament", "icon": "favicon.ico" }
-    ]
-  },
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",

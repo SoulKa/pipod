@@ -22,7 +22,6 @@ export class AppStore extends EventEmitter {
     await fs.mkdir(appsRoot(), { recursive: true })
     await this.loadInstalled()
     await this.seedIfMissing()
-    await this.reconcileFromSeed()
   }
 
   /** Absolute dir of an app's active bundle, or null if not installed (used by the protocol). */
@@ -58,9 +57,6 @@ export class AppStore extends EventEmitter {
         availableVersion: remote?.version ?? null,
         updateAvailable:
           !!remote && !!inst && (remote.version !== inst.version || remote.sha256 !== inst.sha256),
-        // Prefer what was persisted at install (offline-safe); fall back to the fetched manifest so
-        // a shortcut added upstream surfaces before the bundle itself is reinstalled.
-        shortcuts: inst?.shortcuts ?? remote?.shortcuts,
       }
     })
   }
@@ -139,37 +135,6 @@ export class AppStore extends EventEmitter {
     }
   }
 
-  /**
-   * Backfill display metadata (name + shortcuts) onto already-installed bundles from the offline
-   * seed when the versions match. A launcher update that adds a shortcut to an app the Pi already
-   * has doesn't change the bundle (so no reinstall fires) — this surfaces the new tile offline by
-   * rewriting only the small metadata file, never the bundle itself.
-   */
-  private async reconcileFromSeed(): Promise<void> {
-    const manifestPath = join(seedDir(), 'manifest.json')
-    if (!existsSync(manifestPath)) return
-    let manifest: Manifest
-    try {
-      manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as Manifest
-    } catch {
-      return
-    }
-    for (const app of manifest.apps) {
-      const inst = this.installed.get(app.id)
-      // Only same-version installs: a newer GitHub-installed bundle already carries its own metadata.
-      if (!inst || inst.version !== app.version) continue
-      const shortcutsChanged =
-        JSON.stringify(inst.shortcuts ?? null) !== JSON.stringify(app.shortcuts ?? null)
-      if (inst.name === app.name && !shortcutsChanged) continue
-
-      const meta: InstalledApp = { ...inst, name: app.name }
-      if (app.shortcuts) meta.shortcuts = app.shortcuts
-      else delete meta.shortcuts
-      await fs.writeFile(appMetaPath(app.id), `${JSON.stringify(meta, null, 2)}\n`)
-      this.installed.set(app.id, meta)
-    }
-  }
-
   /** Verify → extract → atomic swap → persist metadata. Leaves the active bundle intact on error. */
   private async installBuffer(
     app: ManifestApp,
@@ -207,8 +172,8 @@ export class AppStore extends EventEmitter {
       sha256,
       installedAt: new Date().toISOString(),
       name: app.name,
-      // Persist so the home grid can label + render shortcut tiles without a remote manifest.
-      ...(app.shortcuts ? { shortcuts: app.shortcuts } : {}),
+      // Persist so the home grid can label + launch the app without a remote manifest.
+      ...(app.query ? { query: app.query } : {}),
     }
     await fs.writeFile(appMetaPath(app.id), `${JSON.stringify(meta, null, 2)}\n`)
     this.installed.set(app.id, meta)
