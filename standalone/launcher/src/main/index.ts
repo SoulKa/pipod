@@ -91,21 +91,8 @@ function layoutViews(): void {
   })
 }
 
-/**
- * Show an installed app full-screen with the floating Home button layered on top. An optional
- * query (e.g. `mode=tournament`) is appended to the launch URL so one bundle can back several
- * home tiles; the protocol resolves files by pathname, so the query only reaches the app.
- */
-function launchApp(id: string, query?: string): void {
-  if (!mainWindow) return
-  if (!store.getActiveDir(id)) throw new Error(`App "${id}" is not installed`)
-  if (!appView) {
-    // piapp:// is a secure scheme (apps need a secure context for crypto.randomUUID etc.), but
-    // apps talk to the LAN server over plain http. Disable webSecurity for the app view so those
-    // same-device, same-LAN requests aren't blocked as mixed content — acceptable on a kiosk.
-    appView = new WebContentsView({ webPreferences: { sandbox: true, webSecurity: false } })
-    keepZoomed(appView.webContents)
-  }
+/** Create the floating Home button overlay once and keep it warm across launches. */
+function ensureHomeButton(): WebContentsView {
   if (!homeButton) {
     homeButton = new WebContentsView({
       webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
@@ -114,21 +101,73 @@ function launchApp(id: string, query?: string): void {
     keepZoomed(homeButton.webContents)
     loadRenderer(homeButton.webContents, { role: 'overlay' })
   }
-  const cv = mainWindow.contentView
-  if (!cv.children.includes(appView)) cv.addChildView(appView)
-  // Added after the app view → composited on top.
-  if (!cv.children.includes(homeButton)) cv.addChildView(homeButton)
-  layoutViews()
-  void appView.webContents.loadURL(`${PIAPP_SCHEME}://${id}/index.html${query ? `?${query}` : ''}`)
+  return homeButton
+}
+
+/**
+ * Show an installed app full-screen with the floating Home button layered on top. An optional
+ * query (e.g. `mode=tournament`) is appended to the launch URL so one bundle can back several
+ * home tiles; the protocol resolves files by pathname, so the query only reaches the app.
+ *
+ * Each launch gets its own view, loaded off-screen and only composited once it has painted — the
+ * current screen (old app, or the home grid) stays up until then, so no stale frame or blank flash.
+ */
+function launchApp(id: string, query?: string): void {
+  if (!mainWindow) return
+  if (!store.getActiveDir(id)) throw new Error(`App "${id}" is not installed`)
+
+  // piapp:// is a secure scheme (apps need a secure context for crypto.randomUUID etc.), but apps
+  // talk to the LAN server over plain http. Disable webSecurity for the app view so those
+  // same-device, same-LAN requests aren't blocked as mixed content — acceptable on a kiosk.
+  const next = new WebContentsView({ webPreferences: { sandbox: true, webSecurity: false } })
+  next.setBackgroundColor('#0f172a') // neutral dark in case any sub-frame gap shows through
+  keepZoomed(next.webContents)
+  // Lay out at the full panel up front so the first paint (while still detached) is correct.
+  const { width, height } = mainWindow.getContentBounds()
+  next.setBounds({ x: 0, y: 0, width, height })
+
+  const previous = appView
+  appView = next
+
+  let revealed = false
+  const reveal = (): void => {
+    if (revealed) return
+    revealed = true
+    // A newer launch superseded this one (or the window went away) → discard this view.
+    if (!mainWindow || appView !== next) {
+      next.webContents.close()
+      return
+    }
+    const cv = mainWindow.contentView
+    cv.addChildView(next)
+    // (Re-)stack the Home button on top of the freshly added app view.
+    const home = ensureHomeButton()
+    if (cv.children.includes(home)) cv.removeChildView(home)
+    cv.addChildView(home)
+    layoutViews()
+    if (previous) {
+      cv.removeChildView(previous)
+      previous.webContents.close()
+    }
+  }
+  next.webContents.once('did-finish-load', reveal)
+  // Don't strand the user on the old app if the new one fails to load.
+  next.webContents.once('did-fail-load', reveal)
+
+  void next.webContents.loadURL(`${PIAPP_SCHEME}://${id}/index.html${query ? `?${query}` : ''}`)
   mainWindow.webContents.send('launcher:activeApp', id)
 }
 
-/** Detach the app + Home button (kept warm for the next launch) and return to the home grid. */
+/** Detach the Home button (kept warm) and tear down the running app view; back to the home grid. */
 function goHome(): void {
   if (!mainWindow) return
   const cv = mainWindow.contentView
   if (homeButton && cv.children.includes(homeButton)) cv.removeChildView(homeButton)
-  if (appView && cv.children.includes(appView)) cv.removeChildView(appView)
+  if (appView) {
+    if (cv.children.includes(appView)) cv.removeChildView(appView)
+    appView.webContents.close()
+    appView = null
+  }
   mainWindow.webContents.send('launcher:activeApp', null)
 }
 
