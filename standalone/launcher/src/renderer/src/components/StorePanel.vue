@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CatalogEntry, UpdateProgress } from '../../../shared/types'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{
   catalog: CatalogEntry[]
@@ -37,77 +38,32 @@ const sorted = computed(() => [...props.catalog].sort((a, b) => a.name.localeCom
 </script>
 
 <template>
-  <div class="scrim" @click.self="$emit('close')">
-    <section class="panel">
-      <header class="head">
-        <h2>App Store</h2>
-        <div class="head-tools">
-          <button @click="$emit('refresh')">Check for updates</button>
-          <button @click="$emit('close')">Close</button>
-        </div>
-      </header>
+  <ModalOverlay title="App Store" :width="680" @close="$emit('close')">
+    <template #head-tools>
+      <button @click="$emit('refresh')">Check for updates</button>
+    </template>
 
-      <ul class="list">
-        <li v-for="entry in sorted" :key="entry.id" class="row">
-          <div class="info">
-            <div class="name">{{ entry.name }}</div>
-            <div class="desc">{{ entry.description }}</div>
-            <div class="status">{{ status(entry) }}</div>
-          </div>
-          <button
-            class="primary"
-            :disabled="!canAct(entry)"
-            @click="$emit('install', entry.id)"
-          >
-            {{ actionLabel(entry) }}
-          </button>
-        </li>
-        <li v-if="!sorted.length" class="empty">No apps found in the latest release.</li>
-      </ul>
-    </section>
-  </div>
+    <ul class="list">
+      <li v-for="entry in sorted" :key="entry.id" class="row">
+        <div class="info">
+          <div class="name">{{ entry.name }}</div>
+          <div class="desc">{{ entry.description }}</div>
+          <div class="status">{{ status(entry) }}</div>
+        </div>
+        <button
+          class="primary"
+          :disabled="!canAct(entry)"
+          @click="$emit('install', entry.id)"
+        >
+          {{ actionLabel(entry) }}
+        </button>
+      </li>
+      <li v-if="!sorted.length" class="empty">No apps found in the latest release.</li>
+    </ul>
+  </ModalOverlay>
 </template>
 
 <style scoped>
-.scrim {
-  position: fixed;
-  inset: 0;
-  background: rgba(2, 6, 23, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-}
-
-.panel {
-  width: min(680px, 92vw);
-  max-height: 86vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.head h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.head-tools {
-  display: flex;
-  gap: 10px;
-}
-
 .list {
   list-style: none;
   margin: 0;
