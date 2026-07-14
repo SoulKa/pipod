@@ -9,7 +9,8 @@ export interface ManifestApp {
   artifact: string
   sha256: string
   size: number
-  icon?: string
+  /** Bundle-relative icon path; required for every launcher app. */
+  icon: string
   /** Query string appended to the bundle's index.html at launch (e.g. `mode=tournament`). */
   query?: string
 }
@@ -27,8 +28,9 @@ export interface InstalledApp {
   version: string
   sha256: string
   installedAt: string
-  /** Persisted from the manifest so the home grid can label + launch the app offline. */
+  /** Persisted from the manifest so the home grid can label, icon + launch the app offline. */
   name?: string
+  icon: string
   query?: string
 }
 
@@ -37,7 +39,7 @@ export interface CatalogEntry {
   id: string
   name: string
   description: string
-  icon?: string
+  icon: string
   installed: boolean
   installedVersion: string | null
   availableVersion: string | null

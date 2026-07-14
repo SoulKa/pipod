@@ -99,6 +99,7 @@ onUnmounted(() => disposers.forEach((d) => d()))
         class="tile"
         @click="launch(app.id, app.query)"
       >
+        <img class="tile-icon" :src="`piapp://${app.id}/${app.icon}`" alt="" />
         <span class="tile-name">{{ app.name ?? nameOf(app.id) }}</span>
         <span class="tile-version">v{{ app.version }}</span>
       </button>
@@ -184,6 +185,14 @@ onUnmounted(() => disposers.forEach((d) => d()))
   border: 1px solid var(--border);
   border-radius: 16px;
   text-align: left;
+}
+
+.tile-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  /* Sit at the top of the tile; the name/version stay pinned to the bottom. */
+  margin-bottom: auto;
 }
 
 .tile-name {

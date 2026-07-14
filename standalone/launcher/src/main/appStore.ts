@@ -10,6 +10,17 @@ import type { CatalogEntry, InstalledApp, Manifest, ManifestApp, UpdateProgress 
 
 const execFileAsync = promisify(execFile)
 
+/** Numeric dot-separated version compare: <0 if a<b, 0 if equal, >0 if a>b. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
 /**
  * Owns the installed app bundles on disk: seeding, listing, checking the remote release for
  * updates, and installing/updating with sha256 verification + atomic swap (previous bundle kept
@@ -21,7 +32,7 @@ export class AppStore extends EventEmitter {
   async init(): Promise<void> {
     await fs.mkdir(appsRoot(), { recursive: true })
     await this.loadInstalled()
-    await this.seedIfMissing()
+    await this.applyBundledSeed()
   }
 
   /** Absolute dir of an app's active bundle, or null if not installed (used by the protocol). */
@@ -51,7 +62,8 @@ export class AppStore extends EventEmitter {
         id,
         name: remote?.name ?? id,
         description: remote?.description ?? '',
-        icon: remote?.icon,
+        // Every id here is backed by an installed and/or manifest entry, both of which require icon.
+        icon: (inst?.icon ?? remote?.icon)!,
         installed: !!inst,
         installedVersion: inst?.version ?? null,
         availableVersion: remote?.version ?? null,
@@ -112,8 +124,13 @@ export class AppStore extends EventEmitter {
     }
   }
 
-  /** First-run: install any seeded app that isn't already present (offline-first). */
-  private async seedIfMissing(): Promise<void> {
+  /**
+   * Apply the bundled offline seed: install any app that's missing, and reinstall one whose seed
+   * differs from what's on disk — but only when the seed is an equal-or-newer version, so a bundle
+   * already updated from a release is never downgraded. This makes launcher-shipped app updates
+   * (and dev rebuilds) take effect on launch without a manual wipe.
+   */
+  private async applyBundledSeed(): Promise<void> {
     const dir = seedDir()
     const manifestPath = join(dir, 'manifest.json')
     if (!existsSync(manifestPath)) return
@@ -124,7 +141,11 @@ export class AppStore extends EventEmitter {
       return
     }
     for (const app of manifest.apps) {
-      if (this.installed.has(app.id)) continue
+      const inst = this.installed.get(app.id)
+      // Up to date, or the seed would be a downgrade → leave the installed bundle alone.
+      if (inst && (inst.sha256 === app.sha256 || compareVersions(app.version, inst.version) < 0)) {
+        continue
+      }
       const tarball = join(dir, app.artifact)
       if (!existsSync(tarball)) continue
       try {
@@ -172,7 +193,8 @@ export class AppStore extends EventEmitter {
       sha256,
       installedAt: new Date().toISOString(),
       name: app.name,
-      // Persist so the home grid can label + launch the app without a remote manifest.
+      icon: app.icon,
+      // Persist so the home grid can label, icon + launch the app without a remote manifest.
       ...(app.query ? { query: app.query } : {}),
     }
     await fs.writeFile(appMetaPath(app.id), `${JSON.stringify(meta, null, 2)}\n`)

@@ -56,6 +56,13 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
   for (const file of descriptors) {
     const id = file.slice(0, -'.app.json'.length)
     const meta = JSON.parse(readFileSync(join(appDir, file), 'utf8'))
+    // Every launcher app must ship an icon, and it must actually be in the bundle.
+    if (!meta.icon) {
+      throw new Error(`${file} is missing "icon" — every launcher app must declare one.`)
+    }
+    if (!existsSync(join(distDir, meta.icon))) {
+      throw new Error(`${file} icon "${meta.icon}" is not present in ${distDir}.`)
+    }
     const artifact = `${id}-${version}.tar.gz`
     const artifactPath = join(outDir, artifact)
 
@@ -71,7 +78,7 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
       artifact,
       sha256: createHash('sha256').update(buf).digest('hex'),
       size: buf.length,
-      ...(meta.icon ? { icon: meta.icon } : {}),
+      icon: meta.icon,
       ...(meta.query ? { query: meta.query } : {}),
     })
   }
