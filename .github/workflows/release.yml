@@ -2,7 +2,7 @@ name: release
 
 # Publishes a full platform release. Push a version tag (e.g. v1.4.0) and this builds the store
 # apps under apps/*, generates the OTA manifest.json + per-app tarballs, then seeds those apps
-# into the Electron launcher and packages it for the Raspberry Pi (Linux arm64: AppImage + deb).
+# into the Electron launcher and packages it for the Raspberry Pi (Linux arm64 AppImage).
 # Everything is attached to one GitHub Release: the Pi launcher reads its manifest.json to
 # self-update installed apps over the air, and the installers are there for flashing the shell.
 # App bundles are static web assets (arch-independent), so a single arm64 job builds it all.
@@ -60,7 +60,7 @@ jobs:
 
       # Invoke electron-builder directly (rather than the build:linux script) so we can inject the
       # tag version via extraMetadata. Output lands in standalone/launcher/dist/.
-      - name: Package launcher (arm64 AppImage + deb)
+      - name: Package launcher (arm64 AppImage)
         run: yarn workspace @pipod/launcher exec electron-builder --linux --arm64 --publish never --config.extraMetadata.version=${{ steps.version.outputs.version }}
 
       - name: Publish GitHub Release
@@ -70,6 +70,5 @@ jobs:
           gh release create "${{ github.ref_name }}"
           release/*.tar.gz release/manifest.json
           standalone/launcher/dist/*.AppImage
-          standalone/launcher/dist/*.deb
           --title "${{ github.ref_name }}"
           --generate-notes
