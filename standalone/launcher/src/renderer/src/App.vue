@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import type { CatalogEntry, InstalledApp, UpdateProgress } from '../../shared/types'
+import type { CatalogEntry, InstalledApp, NetworkState, UpdateProgress } from '../../shared/types'
 import StorePanel from './components/StorePanel.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
+import StatusBarWifi from './components/StatusBarWifi.vue'
 
 // This same renderer is loaded twice: as the launcher home, and (role=overlay) as the tiny
 // always-on-top Home button floating over a running app.
@@ -14,6 +15,10 @@ if (isOverlay) {
 
 const installed = ref<InstalledApp[]>([])
 const catalog = ref<CatalogEntry[]>([])
+// Live wall clock for the home top bar (HH:MM), ticked every 10s.
+const clock = ref(formatClock())
+// Real network state, polled from the Electron main process (OS network interfaces).
+const networkState = ref<NetworkState>({ online: true, wifi: true })
 // Settings and Store are each their own full-screen "app" screen (like launching an app).
 const view = ref<'home' | 'settings' | 'store'>('home')
 const progress = ref<Record<string, UpdateProgress>>({})
@@ -47,6 +52,19 @@ async function goHome(): Promise<void> {
   await window.launcher.goHome()
 }
 
+async function quit(): Promise<void> {
+  await window.launcher.quit()
+}
+
+function formatClock(): string {
+  // Status-bar style: no leading zero on the hour (e.g. "8:30").
+  return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+async function refreshNetwork(): Promise<void> {
+  networkState.value = await window.launcher.getNetworkState()
+}
+
 async function install(id: string): Promise<void> {
   try {
     await window.launcher.installOrUpdate(id)
@@ -60,6 +78,19 @@ async function install(id: string): Promise<void> {
 
 onMounted(async () => {
   if (isOverlay) return
+  const clockTimer = setInterval(() => (clock.value = formatClock()), 10_000)
+  disposers.push(() => clearInterval(clockTimer))
+
+  // Poll Wi-Fi state on the same cadence; the browser online/offline events give instant feedback.
+  void refreshNetwork()
+  const netTimer = setInterval(() => void refreshNetwork(), 10_000)
+  const onNetChange = (): void => void refreshNetwork()
+  window.addEventListener('online', onNetChange)
+  window.addEventListener('offline', onNetChange)
+  disposers.push(() => clearInterval(netTimer))
+  disposers.push(() => window.removeEventListener('online', onNetChange))
+  disposers.push(() => window.removeEventListener('offline', onNetChange))
+
   disposers.push(
     window.launcher.onProgress((p) => {
       progress.value = { ...progress.value, [p.id]: p }
@@ -97,9 +128,31 @@ onUnmounted(() => disposers.forEach((d) => d()))
 
   <!-- Launcher home screen -->
   <div v-else class="home">
-    <header class="home-header">
-      <div class="brand">piPod</div>
+    <!-- Status bar: Wi-Fi left, time centered, battery + close right. -->
+    <header class="status-bar">
+      <div class="sb-left">
+        <StatusBarWifi :state="networkState" />
+      </div>
+
+      <span class="sb-clock">{{ clock }}</span>
+
+      <div class="sb-right">
+        <!-- Cable-powered: always full and charging, so a green battery with a charging bolt. -->
+        <span class="sb-power" title="Charging (AC power)">
+          <svg class="sb-bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 2v11h3v9l7-12h-4l4-8z" />
+          </svg>
+          <svg class="sb-battery" viewBox="0 0 24 12" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="20" height="11" rx="2.5" fill="none" stroke="currentColor" />
+            <rect x="2" y="2" width="17" height="8" rx="1" fill="#34c759" />
+            <rect x="22" y="4" width="2" height="4" rx="1" fill="currentColor" />
+          </svg>
+        </span>
+        <button class="sb-quit" title="Close launcher" @click="quit">⏻</button>
+      </div>
     </header>
+
+    <div class="brand">piPod Touch</div>
 
     <main class="grid">
       <button
@@ -157,14 +210,77 @@ onUnmounted(() => disposers.forEach((d) => d()))
   gap: 20px;
 }
 
-.home-header {
+/* Status bar: thin translucent strip, Wi-Fi left / time centered / battery right. */
+.status-bar {
+  display: grid;
+  /* equal side columns keep the time optically centered regardless of glyph widths */
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 40px;
+  /* span the full top edge, escaping the home's 20px padding */
+  margin: -20px -20px 0;
+  padding: 0 16px;
+  color: #f8fafc;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.sb-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-self: start;
+}
+
+.sb-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+
+.sb-power {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sb-bolt {
+  width: 9px;
+  height: 13px;
+}
+
+.sb-battery {
+  width: 26px;
+  height: 13px;
+}
+
+.sb-clock {
+  /* the bold, centered clock */
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sb-quit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* keep a comfortable tap target even though the icon reads as a slim status glyph */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: none;
 }
 
 .brand {
-  font-size: 22px;
+  align-self: center;
+  text-align: center;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -187,7 +303,7 @@ onUnmounted(() => disposers.forEach((d) => d()))
   align-items: center;
   gap: 10px;
   padding: 0;
-  /* No card chrome — the icon itself is the affordance, iPhone-style. */
+  /* No card chrome — the icon itself is the affordance. */
   background: none;
   border: none;
 }

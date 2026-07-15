@@ -1,4 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain, WebContentsView } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, net, WebContentsView } from 'electron'
+import { networkInterfaces } from 'node:os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -7,7 +8,26 @@ import { handlePiappProtocol, registerPiappScheme } from './protocol'
 import { PIAPP_SCHEME } from './config'
 import { loadSettings, saveSettings } from './settings'
 import { HOME_BUTTON_CSS, HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '../shared/constants'
-import type { LauncherSettings, UpdateProgress } from '../shared/types'
+import type { LauncherSettings, NetworkState, UpdateProgress } from '../shared/types'
+
+// Wireless interface naming: wlan*/wlp* on the Pi (Linux), en0 on macOS laptops (dev).
+const WIFI_INTERFACE = /^(wlan|wlp|wl|wifi|wi-fi|en0)/i
+
+// Derive network status from the OS interfaces: an interface with a non-internal address is a
+// live link, and a wireless-named one means Wi-Fi. net.isOnline() backstops the online flag.
+function getNetworkState(): NetworkState {
+  let online = false
+  let wifi = false
+  for (const [name, addrs] of Object.entries(networkInterfaces())) {
+    for (const addr of addrs ?? []) {
+      if (addr.internal) continue
+      online = true
+      if (WIFI_INTERFACE.test(name)) wifi = true
+    }
+  }
+  if (!online && net.isOnline()) online = true
+  return { online, wifi }
+}
 
 // Serve installed app bundles over piapp://. Must be registered before app 'ready'.
 registerPiappScheme()
@@ -224,6 +244,8 @@ function registerIpc(): void {
   ipcMain.handle('launcher:installOrUpdate', (_e, id: string) => store.installOrUpdate(id))
   ipcMain.handle('launcher:launchApp', (_e, id: string, query?: string) => launchApp(id, query))
   ipcMain.handle('launcher:goHome', () => goHome())
+  ipcMain.handle('launcher:quit', () => app.quit())
+  ipcMain.handle('launcher:getNetworkState', () => getNetworkState())
   ipcMain.handle('launcher:getSettings', () => loadSettings())
   ipcMain.handle('launcher:setSettings', (_e, patch: Partial<LauncherSettings>) =>
     saveSettings(patch)

@@ -5,6 +5,7 @@ import type {
   InstalledApp,
   LauncherBridge,
   LauncherSettings,
+  NetworkState,
   UpdateProgress
 } from '../shared/types'
 
@@ -20,9 +21,11 @@ const launcher: LauncherBridge = {
   installOrUpdate: (id) => ipcRenderer.invoke('launcher:installOrUpdate', id) as Promise<void>,
   launchApp: (id, query) => ipcRenderer.invoke('launcher:launchApp', id, query) as Promise<void>,
   goHome: () => ipcRenderer.invoke('launcher:goHome') as Promise<void>,
+  quit: () => ipcRenderer.invoke('launcher:quit') as Promise<void>,
   getSettings: () => ipcRenderer.invoke('launcher:getSettings') as Promise<LauncherSettings>,
   setSettings: (patch) =>
     ipcRenderer.invoke('launcher:setSettings', patch) as Promise<LauncherSettings>,
+  getNetworkState: () => ipcRenderer.invoke('launcher:getNetworkState') as Promise<NetworkState>,
   onProgress: (cb) => subscribe<UpdateProgress>('launcher:progress', cb),
   onActiveApp: (cb) => subscribe<string | null>('launcher:activeApp', cb),
   onAutoUpdated: (cb) => subscribe<string[]>('launcher:autoUpdated', cb)

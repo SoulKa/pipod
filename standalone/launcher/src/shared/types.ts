@@ -60,6 +60,14 @@ export interface LauncherSettings {
   autoUpdateOnLaunch: boolean
 }
 
+/** Live network status derived from the OS network interfaces in the main process. */
+export interface NetworkState {
+  /** Any non-internal interface currently holds an address. */
+  online: boolean
+  /** A wireless interface (wlan or en0) currently holds an address. */
+  wifi: boolean
+}
+
 /** The typed API the preload exposes on window.launcher; implemented in preload, consumed by the renderer. */
 export interface LauncherBridge {
   listInstalled(): Promise<InstalledApp[]>
@@ -68,8 +76,12 @@ export interface LauncherBridge {
   /** Launch an installed bundle, optionally with a query string (e.g. shortcut mode). */
   launchApp(id: string, query?: string): Promise<void>
   goHome(): Promise<void>
+  /** Quit the launcher entirely. */
+  quit(): Promise<void>
   getSettings(): Promise<LauncherSettings>
   setSettings(patch: Partial<LauncherSettings>): Promise<LauncherSettings>
+  /** Current network status (Wi-Fi / online), read from the OS in the main process. */
+  getNetworkState(): Promise<NetworkState>
   /** Subscribe to install/update progress; returns an unsubscribe function. */
   onProgress(cb: (p: UpdateProgress) => void): () => void
   /** Fires with the running app's id, or null when the launcher returns home. */
