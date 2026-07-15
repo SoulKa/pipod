@@ -208,6 +208,14 @@ onUnmounted(() => disposers.forEach((d) => d()))
   flex-direction: column;
   padding: 20px;
   gap: 20px;
+  /*
+   * Wallpaper: "Der perfekte Begleiter für Ihren aktiven Lebensstil: Apple iPod Touch mit
+   * Retina Display." von Wallpapers.com —
+   * https://de.wallpapers.com/wallpapers/ipod-touch-1242-x-2208-0fd08k3al9e42tac.html
+   */
+  background-image: url('./assets/wallpaper.webp');
+  background-size: cover;
+  background-position: center;
 }
 
 /* Status bar: thin translucent strip, Wi-Fi left / time centered / battery right. */
