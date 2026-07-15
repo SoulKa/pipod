@@ -3,11 +3,14 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { useTrains } from './useTrains'
 
-vi.mock('@/config', () => ({
-  default: {
-    location: { latitude: 1.0, longitude: 2.0 },
-    station: { id: 123 },
-  },
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      theme: 'auto',
+      location: { latitude: 1.0, longitude: 2.0, name: 'Test City' },
+      station: { id: 123, name: 'Test Station' },
+    },
+  }),
 }))
 
 type MountReturn = ReturnType<typeof mount>

@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import WeatherCard from '@/components/WeatherCard.vue'
 import TrainBoard from '@/components/TrainBoard.vue'
+import SettingsView from '@/views/SettingsView.vue'
 import { useWeather } from '@/composables/useWeather'
 import { useTrains } from '@/composables/useTrains'
 import { useTheme } from '@/composables/useTheme'
@@ -16,13 +17,15 @@ const {
 
 const currentTime = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
+const showSettings = ref(false)
 
 function closeApp() {
   // In the launcher this returns to the home grid; harmless (404, swallowed) when run standalone.
   void fetch('/.launcher/home', { method: 'POST' }).catch(() => {})
 }
 
-const { themeSymbol, cycleTheme } = useTheme(weather, currentTime)
+// Activates the theme effect (applies the `dark` class from the shared settings store).
+useTheme(weather, currentTime)
 
 onMounted(() => {
   clockTimer = setInterval(() => {
@@ -63,10 +66,12 @@ onUnmounted(() => {
     </button>
     <button
       class="fixed top-6 right-6 w-12 h-12 rounded-full bg-neutral-200/60 dark:bg-neutral-800/60 flex items-center justify-center text-neutral-400 dark:text-neutral-500 text-xl hover:bg-neutral-300 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-white active:scale-95 transition-all"
-      @click="cycleTheme"
+      aria-label="Open settings"
+      @click="showSettings = true"
     >
-      {{ themeSymbol }}
+      ⚙
     </button>
+    <SettingsView v-if="showSettings" @close="showSettings = false" />
   </div>
 </template>
 

@@ -1,9 +1,11 @@
 {
   "location": {
     "latitude": 48.7823,
-    "longitude": 9.177
+    "longitude": 9.177,
+    "name": "Stuttgart"
   },
   "station": {
-    "id": 5006118
+    "id": 5006118,
+    "name": "Stuttgart, Hauptbahnhof (tief)"
   }
 }

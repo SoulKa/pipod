@@ -1,7 +1,7 @@
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import { fetchWeatherApi } from 'openmeteo'
-import config from '@/config'
+import { useSettings } from '@/composables/useSettings'
 
 export interface HourlySlot {
   hour: number
@@ -40,6 +40,7 @@ export function useWeather(): {
   error: Ref<Error | null>
   refresh: () => Promise<void>
 } {
+  const { settings } = useSettings()
   const weather = ref<WeatherData | null>(null)
   const loading = ref(false)
   const error = ref<Error | null>(null)
@@ -49,8 +50,8 @@ export function useWeather(): {
     error.value = null
     try {
       const responses = await fetchWeatherApi('https://api.open-meteo.com/v1/forecast', {
-        latitude: config.location.latitude,
-        longitude: config.location.longitude,
+        latitude: settings.location.latitude,
+        longitude: settings.location.longitude,
         current: [
           'temperature_2m',
           'apparent_temperature',
@@ -164,6 +165,12 @@ export function useWeather(): {
   }
 
   let timer: ReturnType<typeof setInterval> | null = null
+
+  // Re-fetch immediately when the user picks a new location in settings.
+  watch(
+    () => [settings.location.latitude, settings.location.longitude],
+    () => void refresh(),
+  )
 
   onMounted(() => {
     void refresh()

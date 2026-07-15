@@ -1,6 +1,6 @@
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
-import config from '@/config'
+import { useSettings } from '@/composables/useSettings'
 
 export interface Departure {
   line: string
@@ -31,7 +31,8 @@ const POLL_INTERVAL_MS = 60 * 1000
 
 // Dev uses Vite's `/api/vvs` proxy (CORS). The packaged launcher serves the app over piapp://
 // with no proxy, but app views run with webSecurity disabled, so we hit the VVS host directly.
-const VVS_BASE = import.meta.env.DEV ? '/api/vvs' : 'https://www3.vvs.de/mngvvs'
+// Exported so the station search (useSearch) hits the same base with the same dev/prod behaviour.
+export const VVS_BASE = import.meta.env.DEV ? '/api/vvs' : 'https://www3.vvs.de/mngvvs'
 
 export function useTrains(): {
   departures: Ref<Departure[]>
@@ -40,6 +41,7 @@ export function useTrains(): {
   lastUpdated: Ref<Date | null>
   refresh: () => Promise<void>
 } {
+  const { settings } = useSettings()
   const departures = ref<Departure[]>([])
   const loading = ref(false)
   const error = ref<Error | null>(null)
@@ -52,7 +54,7 @@ export function useTrains(): {
       const params = new URLSearchParams({
         outputFormat: 'rapidJSON',
         type_dm: 'stopID',
-        name_dm: config.station.id.toString(),
+        name_dm: settings.station.id.toString(),
         mode: 'direct',
         dmLineSelectionAll: '1',
         limit: '20',
@@ -91,6 +93,12 @@ export function useTrains(): {
   }
 
   let timer: ReturnType<typeof setInterval> | null = null
+
+  // Re-fetch immediately when the user picks a new station in settings.
+  watch(
+    () => settings.station.id,
+    () => void refresh(),
+  )
 
   onMounted(() => {
     void refresh()

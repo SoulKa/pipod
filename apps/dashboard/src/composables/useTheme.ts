@@ -1,27 +1,22 @@
-import { computed, ref, watchEffect } from 'vue'
+import { watchEffect } from 'vue'
 import type { Ref } from 'vue'
 import type { WeatherData } from '@/composables/useWeather'
+import { useSettings } from '@/composables/useSettings'
 
-export type ThemePreference = 'auto' | 'light' | 'dark'
-
-const CYCLE: ThemePreference[] = ['auto', 'light', 'dark']
 const OFFSET_MS = 60 * 60 * 1000
-const SYMBOLS: Record<ThemePreference, string> = {
-  auto: '◐',
-  light: '☀',
-  dark: '☾',
-}
 
+// Applies the theme preference (from settings) to the document. In `auto` mode it derives
+// day/night from the weather's sunrise/sunset with a 1h offset. Keeps no local state — the
+// preference lives in the shared settings store so the settings view can edit it.
 export function useTheme(weather: Ref<WeatherData | null>, currentTime: Ref<Date>) {
-  const preference = ref<ThemePreference>('auto')
-  const themeSymbol = computed(() => SYMBOLS[preference.value])
+  const { settings } = useSettings()
 
   watchEffect(() => {
-    if (preference.value === 'light') {
+    if (settings.theme === 'light') {
       document.documentElement.classList.remove('dark')
       return
     }
-    if (preference.value === 'dark') {
+    if (settings.theme === 'dark') {
       document.documentElement.classList.add('dark')
       return
     }
@@ -31,10 +26,4 @@ export function useTheme(weather: Ref<WeatherData | null>, currentTime: Ref<Date
       w !== null && t >= w.sunrise.getTime() + OFFSET_MS && t < w.sunset.getTime() - OFFSET_MS
     document.documentElement.classList.toggle('dark', !isDay)
   })
-
-  function cycleTheme() {
-    preference.value = CYCLE[(CYCLE.indexOf(preference.value) + 1) % CYCLE.length]
-  }
-
-  return { preference, themeSymbol, cycleTheme }
 }
