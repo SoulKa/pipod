@@ -77,6 +77,10 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
   mainWindow.on('resize', layoutViews)
+  // Drop the reference once the window is gone so teardown callbacks don't touch a dead window.
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -199,7 +203,9 @@ function launchApp(id: string, query?: string): void {
 
 /** Detach the Home button (kept warm) and tear down the running app view; back to the home grid. */
 function goHome(): void {
-  if (!mainWindow) return
+  // Closing the launcher with an app open destroys the app view, whose 'destroyed' handler calls
+  // goHome() mid-teardown — bail if the window itself is already gone (isDestroyed, not just null).
+  if (!mainWindow || mainWindow.isDestroyed()) return
   const cv = mainWindow.contentView
   if (homeButton && cv.children.includes(homeButton)) cv.removeChildView(homeButton)
   if (appView) {
@@ -209,7 +215,7 @@ function goHome(): void {
     if (wc && !wc.isDestroyed()) wc.close()
     appView = null
   }
-  mainWindow.webContents.send('launcher:activeApp', null)
+  if (!mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('launcher:activeApp', null)
 }
 
 function registerIpc(): void {
