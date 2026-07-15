@@ -9,6 +9,26 @@ export interface Departure {
   realtimeTime: Date | null
   delayMinutes: number
   platform: string | null
+  cancelled: boolean
+}
+
+/**
+ * Departures to actually show on the board: drops cancelled trains and any whose effective
+ * departure time (`realtimeTime ?? scheduledTime`) is at or before `now`, so just-departed trains
+ * disappear on the next clock tick rather than lingering until the 60s poll. Pure so the board can
+ * re-derive it every second against a live clock.
+ *
+ * @param departures - Fetched departures, assumed already sorted by effective departure time.
+ * @param now - The current time to compare departure times against.
+ * @param limit - Maximum number of departures to return. Defaults to 6.
+ * @returns The upcoming, non-cancelled departures, capped to `limit`.
+ */
+export function visibleDepartures(departures: Departure[], now: Date, limit = 6): Departure[] {
+  const nowMs = now.getTime()
+  return departures
+    .filter((dep) => !dep.cancelled)
+    .filter((dep) => (dep.realtimeTime ?? dep.scheduledTime).getTime() > nowMs)
+    .slice(0, limit)
 }
 
 interface VvsTransportation {
@@ -21,6 +41,8 @@ interface VvsStopEvent {
   departureTimeEstimated?: string
   transportation: VvsTransportation
   location: { properties?: { platformName?: string } }
+  // rapidJSON marks cancelled trips via realtimeStatus, e.g. ['TRIP_CANCELLED'].
+  realtimeStatus?: string[]
 }
 
 interface VvsResponse {
@@ -78,6 +100,7 @@ export function useTrains(): {
             realtimeTime: realtime,
             delayMinutes,
             platform: e.location.properties?.platformName ?? null,
+            cancelled: (e.realtimeStatus ?? []).some((s) => /cancel/i.test(s)),
           }
         })
         .sort(

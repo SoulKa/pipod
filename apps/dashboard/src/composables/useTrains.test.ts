@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import { useTrains } from './useTrains'
+import { useTrains, visibleDepartures } from './useTrains'
+import type { Departure } from './useTrains'
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
@@ -96,6 +97,50 @@ describe('useTrains', () => {
     expect(d.delayMinutes).toBe(3)
     expect(d.platform).toBe('3')
     expect(result.lastUpdated.value).toBeInstanceOf(Date)
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('marks a departure cancelled when realtimeStatus contains a cancellation', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    const event = { ...MOCK_EVENT, realtimeStatus: ['TRIP_CANCELLED'] }
+    mockFetch({ stopEvents: [event] })
+
+    const [result, wrapper] = withSetup(() => useTrains())
+    await flushPromises()
+
+    expect(result.departures.value[0]!.cancelled).toBe(true)
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('marks a departure not cancelled for a normal realtimeStatus', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    const event = { ...MOCK_EVENT, realtimeStatus: ['MONITORED'] }
+    mockFetch({ stopEvents: [event] })
+
+    const [result, wrapper] = withSetup(() => useTrains())
+    await flushPromises()
+
+    expect(result.departures.value[0]!.cancelled).toBe(false)
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('treats a missing realtimeStatus as not cancelled', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    mockFetch({ stopEvents: [MOCK_EVENT] })
+
+    const [result, wrapper] = withSetup(() => useTrains())
+    await flushPromises()
+
+    expect(result.departures.value[0]!.cancelled).toBe(false)
 
     wrapper.unmount()
     vi.useRealTimers()
@@ -205,5 +250,63 @@ describe('useTrains', () => {
 
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
+  })
+})
+
+describe('visibleDepartures', () => {
+  const NOW = new Date('2026-01-01T10:00:00Z')
+
+  function dep(overrides: Partial<Departure>): Departure {
+    return {
+      line: 'S1',
+      direction: 'Plochingen',
+      scheduledTime: new Date('2026-01-01T10:05:00Z'),
+      realtimeTime: null,
+      delayMinutes: 0,
+      platform: '1',
+      cancelled: false,
+      ...overrides,
+    }
+  }
+
+  it('drops cancelled departures', () => {
+    const cancelled = dep({ direction: 'Cancelled', cancelled: true })
+    const running = dep({ direction: 'Running' })
+    expect(visibleDepartures([cancelled, running], NOW).map((d) => d.direction)).toEqual([
+      'Running',
+    ])
+  })
+
+  it('drops departures whose effective time is at or before now', () => {
+    const past = dep({ direction: 'Past', scheduledTime: new Date('2026-01-01T09:59:00Z') })
+    const exactlyNow = dep({ direction: 'Now', scheduledTime: NOW })
+    const future = dep({ direction: 'Future' })
+    expect(visibleDepartures([past, exactlyNow, future], NOW).map((d) => d.direction)).toEqual([
+      'Future',
+    ])
+  })
+
+  it('keeps a delayed departure whose realtime estimate is still in the future', () => {
+    const delayed = dep({
+      direction: 'Delayed',
+      scheduledTime: new Date('2026-01-01T09:59:00Z'),
+      realtimeTime: new Date('2026-01-01T10:03:00Z'),
+      delayMinutes: 4,
+    })
+    expect(visibleDepartures([delayed], NOW).map((d) => d.direction)).toEqual(['Delayed'])
+  })
+
+  it('hides a departure once now advances past its effective time', () => {
+    const soon = dep({ direction: 'Soon', scheduledTime: new Date('2026-01-01T10:00:30Z') })
+    expect(visibleDepartures([soon], NOW)).toHaveLength(1)
+    expect(visibleDepartures([soon], new Date('2026-01-01T10:00:31Z'))).toHaveLength(0)
+  })
+
+  it('caps the list to the requested limit', () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      dep({ direction: `D${i}`, scheduledTime: new Date(`2026-01-01T10:${10 + i}:00Z`) }),
+    )
+    expect(visibleDepartures(many, NOW)).toHaveLength(6)
+    expect(visibleDepartures(many, NOW, 3)).toHaveLength(3)
   })
 })

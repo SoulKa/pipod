@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { visibleDepartures } from '@/composables/useTrains'
 import type { Departure } from '@/composables/useTrains'
 
 const props = defineProps<{
@@ -9,9 +10,12 @@ const props = defineProps<{
   lastUpdated: Date | null
 }>()
 
-const rows = computed(() => props.departures.slice(0, 6))
-
 const now = ref(new Date())
+
+// Re-derived every second against `now` so cancelled/departed trains drop off within a second
+// rather than lingering until the next 60s poll.
+const rows = computed(() => visibleDepartures(props.departures, now.value))
+
 let clockTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   clockTimer = setInterval(() => {
