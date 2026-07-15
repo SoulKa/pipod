@@ -17,6 +17,15 @@ registerPiappScheme()
 // full panel resolution and is merely drawn smaller. Prod is 1:1.
 const DEV_SCALE = is.dev ? 0.5 : 1
 
+/**
+ * Dev iteration guard: don't let the on-launch updater pull a remote release bundle over a
+ * locally-built app. Active in dev (`yarn dev:launcher`) or when PIPOD_NO_UPDATE=1 is set (e.g. a
+ * packaged launcher). The manual App Store "Update" and the bundled seed are unaffected.
+ */
+function autoUpdateSuppressed(): boolean {
+  return is.dev || process.env['PIPOD_NO_UPDATE'] === '1'
+}
+
 const store = new AppStore()
 let mainWindow: BrowserWindow | null = null
 let appView: WebContentsView | null = null
@@ -231,9 +240,14 @@ app.whenReady().then(async () => {
   createWindow()
 
   // Auto-apply app updates on launch when a release is reachable (apps-only = low risk); any
-  // failure silently keeps the working version.
+  // failure silently keeps the working version. Suppressed in dev / via PIPOD_NO_UPDATE so a
+  // locally-built app isn't rolled back to the released bundle on every launch.
   const settings = await loadSettings()
-  if (settings.autoUpdateOnLaunch) {
+  if (autoUpdateSuppressed()) {
+    console.log(
+      '[launcher] on-launch auto-update suppressed (dev / PIPOD_NO_UPDATE) — leaving installed apps as-is'
+    )
+  } else if (settings.autoUpdateOnLaunch) {
     void store.autoUpdateInstalled().then((ids) => {
       if (ids.length) mainWindow?.webContents.send('launcher:autoUpdated', ids)
     })
