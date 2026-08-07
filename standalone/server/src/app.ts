@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs'
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify'
 import cors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
 import { env } from './env'
+import { createLogger, PrettyLogController } from './logger'
 import { registerRoutes } from './routes'
 
 /**
@@ -11,7 +12,12 @@ import { registerRoutes } from './routes'
  * index.html so client-side routing works).
  */
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? true })
+  // Fastify rejects `logger` and `loggerInstance` together, so the two modes are exclusive.
+  const logging: FastifyServerOptions =
+    (opts.logger ?? true)
+      ? { loggerInstance: createLogger(), logController: new PrettyLogController() }
+      : { logger: false }
+  const app = Fastify(logging)
 
   // Trusted LAN, no auth — allow any origin so boards/overview can connect.
   await app.register(cors, { origin: true })

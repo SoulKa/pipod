@@ -9,6 +9,8 @@ export const env = {
   dataDir: resolve(process.env.DATA_DIR ?? './data'),
   /** Absolute path to the built console bundle to serve (empty = don't serve). */
   consoleDir: process.env.CONSOLE_DIR ?? '',
+  /** Lowest log level to print: trace | debug | info | warn | error | fatal | silent. */
+  logLevel: process.env.LOG_LEVEL ?? 'info',
 }
 
 /** DB_FILE overrides the on-disk path (tests set it to `:memory:` for a throwaway DB). */

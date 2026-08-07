@@ -98,7 +98,9 @@ orchestration in `services/tournaments.ts` persists round-robin groups / knockou
 match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
-built console SPA when `CONSOLE_DIR` is set.
+built console SPA when `CONSOLE_DIR` is set. Logging goes through `src/logger.ts` (plain text
+instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
+`app.log` / `request.log`, not `console.log`.
 
 **Console (`standalone/console`).** Its typed REST client calls `/api`; its Socket.IO client
 receives tournament snapshots and live-match updates. In dev, Vite proxies `/api` and `/socket.io`
