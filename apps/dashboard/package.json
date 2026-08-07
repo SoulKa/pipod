@@ -12,17 +12,17 @@
   },
   "dependencies": {
     "openmeteo": "1.2.3",
-    "vue": "3.5.39"
+    "vue": "3.5.41"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
-    "@unocss/preset-wind4": "66.7.2",
-    "@vitejs/plugin-vue": "6.0.7",
+    "@unocss/preset-wind4": "66.7.5",
+    "@vitejs/plugin-vue": "6.0.8",
     "@vue/tsconfig": "0.9.1",
-    "npm-run-all2": "9.0.2",
+    "npm-run-all2": "9.0.3",
     "typescript": "6.0.3",
-    "unocss": "66.7.2",
-    "vite": "8.1.4",
-    "vue-tsc": "3.3.7"
+    "unocss": "66.7.5",
+    "vite": "7.3.6",
+    "vue-tsc": "3.3.9"
   }
 }
