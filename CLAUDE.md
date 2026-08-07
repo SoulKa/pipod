@@ -58,6 +58,10 @@ type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also ha
 - Every workspace has a vitest suite (board covers the game engine + a component test). For
   UI/behavior not covered by tests, verify by running the relevant `yarn dev:*` and exercising the
   flow in a browser.
+- `standalone/server/src/test/e2e/` boots the real stack (`startServer` on port 0) and drives a
+  whole tournament over real socket.io connections and `/api` calls — the only coverage of the
+  board↔server wire contract, since every other suite mocks one side of it. Add cases there when
+  changing `realtime/`, the socket event maps, or match/floor lifecycle.
 - **Run one command per Bash call.** Chaining with `&&` / `;`, piping into `tail`/`head`, and
   reading exit codes with `echo $?` (or `echo $EXIT`) all trigger manual approval prompts. A
   single command per call runs without approval — e.g. run `yarn test --project board` and

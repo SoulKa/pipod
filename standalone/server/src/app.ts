@@ -10,8 +10,8 @@ import { registerRoutes } from './routes'
  * is configured, serve it as a single-page app (non-/api routes fall back to
  * index.html so client-side routing works).
  */
-export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true })
+export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.logger ?? true })
 
   // Trusted LAN, no auth — allow any origin so boards/overview can connect.
   await app.register(cors, { origin: true })

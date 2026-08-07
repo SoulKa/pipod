@@ -1897,6 +1897,7 @@ __metadata:
     fastify: "npm:5.11.2"
     nanoid: "npm:6.0.1"
     socket.io: "npm:4.8.3"
+    socket.io-client: "npm:4.8.3"
     tsx: "npm:4.23.11"
     typescript: "npm:~6.0.3"
     vitest: "npm:4.1.10"
