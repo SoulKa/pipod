@@ -101,9 +101,20 @@ button {
     transform 150ms ease;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--pd-border-accent);
-  background: color-mix(in srgb, var(--pd-surface-raised) 86%, var(--pd-accent));
+/*
+ * Every hover state in this theme is gated twice: on a real pointer, and on the app not
+ * having opted out with `<html class="pd-touch">`. A touchscreen leaves the tapped
+ * element stuck in :hover until something else is tapped, so the highlight reads as
+ * "still selected" long after the tap. The explicit class exists because Chromium on the
+ * Pi still reports `hover: hover` when it can't identify the touch device, which makes
+ * the media query alone unreliable there. `:where()` adds no specificity, so gating a
+ * rule never changes how it cascades against :active / :disabled.
+ */
+@media (hover: hover) {
+  :where(html:not(.pd-touch)) button:hover:not(:disabled) {
+    border-color: var(--pd-border-accent);
+    background: color-mix(in srgb, var(--pd-surface-raised) 86%, var(--pd-accent));
+  }
 }
 
 button:active:not(:disabled) {
@@ -135,10 +146,10 @@ textarea::placeholder {
   color: var(--pd-text-dim);
 }
 
-input:hover,
-select:hover,
-textarea:hover {
-  border-color: var(--pd-border-accent);
+@media (hover: hover) {
+  :where(html:not(.pd-touch)) :is(input, select, textarea):hover {
+    border-color: var(--pd-border-accent);
+  }
 }
 
 :focus-visible {
@@ -153,8 +164,10 @@ a {
   text-underline-offset: 0.16em;
 }
 
-a:hover {
-  color: #67e8f9;
+@media (hover: hover) {
+  :where(html:not(.pd-touch)) a:hover {
+    color: #67e8f9;
+  }
 }
 
 h1,
@@ -215,8 +228,10 @@ tbody tr {
   transition: background-color 150ms ease;
 }
 
-tbody tr:hover {
-  background: var(--pd-surface-highlight);
+@media (hover: hover) {
+  :where(html:not(.pd-touch)) tbody tr:hover {
+    background: var(--pd-surface-highlight);
+  }
 }
 
 .pd-panel {
@@ -241,9 +256,11 @@ tbody tr:hover {
   color: var(--pd-accent-contrast);
 }
 
-.pd-button--primary:hover:not(:disabled) {
-  border-color: #67e8f9;
-  background: linear-gradient(135deg, #67e8f9, var(--pd-accent));
+@media (hover: hover) {
+  :where(html:not(.pd-touch)) .pd-button--primary:hover:not(:disabled) {
+    border-color: #67e8f9;
+    background: linear-gradient(135deg, #67e8f9, var(--pd-accent));
+  }
 }
 
 .pd-button--danger {
