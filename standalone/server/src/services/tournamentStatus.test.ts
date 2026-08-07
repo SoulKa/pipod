@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { CreateStageInput } from '@pipod/shared'
+import { eq } from 'drizzle-orm'
+import type { CreateStageInput, TournamentStatus } from '@pipod/shared'
 import { resetDb } from '../test/db'
+import { db } from '../db/client'
+import { tournaments } from '../db/schema'
 import { repo } from '../repo'
 import { reportLeg } from './matches'
 import {
@@ -10,7 +13,7 @@ import {
   createTournament,
   generateStage,
 } from './tournaments'
-import { syncTournamentStatus } from './tournamentStatus'
+import { syncAllTournamentStatuses, syncTournamentStatus } from './tournamentStatus'
 
 const stageInput = (over: Partial<CreateStageInput>): CreateStageInput => ({
   name: 'Stage',
@@ -102,6 +105,58 @@ describe('completion on the deciding leg', () => {
     round0.forEach((m) => reportLeg(m.id, 0, m.participantAId!))
 
     expect(repo.getTournament(tournament.id)!.status).toBe('active')
+  })
+})
+
+/**
+ * Statuses are only re-derived when something happens, so a tournament that finished
+ * before this rule existed keeps whatever it was last written with. Reconciling at
+ * startup heals those rows.
+ */
+describe('syncAllTournamentStatuses', () => {
+  beforeEach(resetDb)
+
+  /** Play a tournament to its end, then force its row back to a stale status. */
+  function finishedButStoredAs(status: TournamentStatus) {
+    const { tournament, players } = withPlayers(2)
+    const stage = createStage(tournament.id, knockoutInput())
+    const [final] = generateStage(stage.id)
+    reportLeg(final!.id, 0, players[0]!.id)
+    db.update(tournaments).set({ status }).where(eq(tournaments.id, tournament.id)).run()
+    return tournament
+  }
+
+  it('completes a tournament left behind as active', () => {
+    const stale = finishedButStoredAs('active')
+
+    const changed = syncAllTournamentStatuses()
+
+    expect(changed.map((t) => t.id)).toEqual([stale.id])
+    expect(repo.getTournament(stale.id)!.status).toBe('completed')
+  })
+
+  it('leaves a cancelled tournament alone', () => {
+    const stale = finishedButStoredAs('cancelled')
+
+    expect(syncAllTournamentStatuses()).toEqual([])
+    expect(repo.getTournament(stale.id)!.status).toBe('cancelled')
+  })
+
+  it('reports nothing when every tournament is already correct', () => {
+    finishedButStoredAs('completed')
+    expect(syncAllTournamentStatuses()).toEqual([])
+  })
+
+  it('reconciles each tournament independently', () => {
+    const stale = finishedButStoredAs('active')
+    const { tournament: running } = withPlayers(4)
+    const stage = createStage(running.id, stageInput({ type: 'group' }))
+    generateStage(stage.id, { groupCount: 1 })
+
+    const changed = syncAllTournamentStatuses()
+
+    expect(changed.map((t) => t.id)).toEqual([stale.id])
+    expect(repo.getTournament(running.id)!.status).toBe('active')
   })
 })
 

@@ -32,3 +32,15 @@ export function syncTournamentStatus(tournamentId: string): Tournament | null {
   db.update(tournaments).set({ status }).where(eq(tournaments.id, tournamentId)).run()
   return { ...tournament, status }
 }
+
+/**
+ * Re-derive every tournament's status, returning only those that moved. Statuses are
+ * otherwise updated event-by-event, so a tournament that finished before this rule
+ * existed — or while the server was down — keeps a stale one. Run at startup.
+ */
+export function syncAllTournamentStatuses(): Tournament[] {
+  return repo
+    .listTournaments()
+    .map((t) => syncTournamentStatus(t.id))
+    .filter((t): t is Tournament => t !== null)
+}
