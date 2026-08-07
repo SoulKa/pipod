@@ -1,5 +1,5 @@
 // Drizzle table definitions are the source of truth for generated migrations.
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type {
   BracketSlot,
   MatchStatus,
@@ -122,7 +122,11 @@ export const legs = sqliteTable(
     outMode: text('out_mode').$type<OutMode>().notNull(),
     winnerId: text('winner_id'),
   },
-  (table) => [index('idx_legs_match').on(table.matchId)],
+  // A leg number belongs to exactly one result — the backstop for retried reports.
+  (table) => [
+    index('idx_legs_match').on(table.matchId),
+    uniqueIndex('uq_legs_match_index').on(table.matchId, table.index),
+  ],
 )
 
 export const throws = sqliteTable(

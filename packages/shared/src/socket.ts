@@ -19,6 +19,12 @@ export interface LegResultPayload {
   winnerId: string
 }
 
+/**
+ * Acknowledgement for a reported leg. A board must not advance its own match state
+ * until the server confirms — an unregistered or stale board is rejected here.
+ */
+export type LegResultResponse = { ok: true; match: Match } | { ok: false; message: string }
+
 /** Match config the server hands to a board that has claimed a match. */
 export interface MatchAssignment {
   match: Match
@@ -72,7 +78,10 @@ export interface ClientToServerEvents {
   ) => void
   /** Legacy no-op retained while boards migrate to board:snapshot uploads. */
   'match:throw': (payload: ThrowPayload) => void
-  'match:legResult': (payload: LegResultPayload) => void
+  'match:legResult': (
+    payload: LegResultPayload,
+    reply: (response: LegResultResponse) => void,
+  ) => void
 }
 
 export interface InterServerEvents {

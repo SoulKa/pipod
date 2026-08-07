@@ -143,7 +143,15 @@ onUnmounted(() => disposers.forEach((d) => d()))
             <path d="M7 2v11h3v9l7-12h-4l4-8z" />
           </svg>
           <svg class="sb-battery" viewBox="0 0 24 12" aria-hidden="true">
-            <rect x="0.5" y="0.5" width="20" height="11" rx="2.5" fill="none" stroke="currentColor" />
+            <rect
+              x="0.5"
+              y="0.5"
+              width="20"
+              height="11"
+              rx="2.5"
+              fill="none"
+              stroke="currentColor"
+            />
             <rect x="2" y="2" width="17" height="8" rx="1" fill="#34c759" />
             <rect x="22" y="4" width="2" height="4" rx="1" fill="currentColor" />
           </svg>

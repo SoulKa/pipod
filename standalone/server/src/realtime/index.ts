@@ -124,10 +124,13 @@ export function setupRealtime(io: IoServer): void {
       if (state) broadcastLive(floor.tournamentId, state)
     })
 
-    socket.on('match:legResult', ({ matchId, legIndex, winnerId }) => {
+    socket.on('match:legResult', ({ matchId, legIndex, winnerId }, reply) => {
       try {
         const assignedMatch = repo.getMatch(matchId)
-        if (!assignedMatch || !canControlMatch(socket, assignedMatch)) return
+        if (!assignedMatch || !canControlMatch(socket, assignedMatch)) {
+          reply?.({ ok: false, message: 'this board is not assigned to the match' })
+          return
+        }
         const { match, changed } = reportLeg(matchId, legIndex, winnerId)
         for (const m of changed) broadcastMatch(m)
 
@@ -155,8 +158,10 @@ export function setupRealtime(io: IoServer): void {
           dispatchReadyFloors(match.tournamentId)
         }
         broadcastSnapshot(match.tournamentId)
+        reply?.({ ok: true, match })
       } catch (err) {
         socket.emit('error:message', errorText(err))
+        reply?.({ ok: false, message: errorText(err) })
       }
     })
   })
@@ -175,8 +180,10 @@ export function dispatchFloorMatch(match: Match): Match | null {
   const participants = participantsFor(liveMatch)
   const snapshot = createMatchSnapshot(liveMatch, participants)
   const session = initializeFloorSession(floor, liveMatch, snapshot)
-  ioServer.to(room).emit('match:assigned', { match: liveMatch, participants })
+  // Session first: a board starts its leg as soon as it is assigned and stamps that
+  // first upload with the revision it knows, so it has to hold the new one by then.
   ioServer.to(room).emit('board:session', toBoardSession(session))
+  ioServer.to(room).emit('match:assigned', { match: liveMatch, participants })
   const state = deriveLiveMatchState(snapshot)
   if (state) broadcastLive(liveMatch.tournamentId, state)
   broadcastMatch(liveMatch)

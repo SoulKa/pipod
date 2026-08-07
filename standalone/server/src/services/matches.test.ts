@@ -68,6 +68,41 @@ describe('reportLeg', () => {
     expect(second.match.winnerId).toBe(winner)
   })
 
+  it('ignores a repeat of a leg it already recorded', () => {
+    const { matches } = seedKnockout(4, 3)
+    const match = round0(matches)[0]!
+    const winner = match.participantAId!
+
+    reportLeg(match.id, 0, winner)
+    // A board whose acknowledgement timed out re-sends the same leg.
+    const retry = reportLeg(match.id, 0, winner)
+
+    expect(retry.match.legsA).toBe(1)
+    expect(retry.changed).toEqual([])
+    expect(repo.listLegs(match.id)).toHaveLength(1)
+  })
+
+  it('re-answers a retried deciding leg instead of failing on the completed match', () => {
+    const { matches } = seedKnockout(4, 1)
+    const match = round0(matches)[0]!
+    const winner = match.participantAId!
+
+    reportLeg(match.id, 0, winner)
+    const retry = reportLeg(match.id, 0, winner)
+
+    expect(retry.match.status).toBe('completed')
+    expect(retry.match.winnerId).toBe(winner)
+    expect(repo.listLegs(match.id)).toHaveLength(1)
+  })
+
+  it('rejects a conflicting winner for a leg already recorded', () => {
+    const { matches } = seedKnockout(4, 3)
+    const match = round0(matches)[0]!
+
+    reportLeg(match.id, 0, match.participantAId!)
+    expect(() => reportLeg(match.id, 0, match.participantBId!)).toThrow(/already reported/)
+  })
+
   it('advances both winners into the final, flipping it to ready', () => {
     const { matches } = seedKnockout(4, 1)
     const [m0, m1] = round0(matches)

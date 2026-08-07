@@ -147,6 +147,11 @@ export function resolveByes(stageId: string): Match[] {
  * Record a completed leg's winner, update the match tally, and — when the match is
  * decided — mark it completed and advance the winner. Returns the match plus any
  * downstream matches that changed, so the caller can broadcast them.
+ *
+ * Idempotent per (match, legIndex): a board that never saw its acknowledgement may
+ * re-send a leg, and counting it twice would silently corrupt the match score. The
+ * repeat gets the same answer as the original instead — including for the deciding
+ * leg, where the match is already completed.
  */
 export function reportLeg(
   matchId: string,
@@ -155,6 +160,15 @@ export function reportLeg(
 ): { match: Match; changed: Match[] } {
   const match = repo.getMatch(matchId)
   if (!match) throw new Error('match not found')
+
+  const recorded = repo.getLeg(matchId, legIndex)
+  if (recorded) {
+    if (recorded.winnerId !== winnerId) {
+      throw new Error(`leg ${legIndex} was already reported with a different winner`)
+    }
+    return { match, changed: [] }
+  }
+
   if (match.status === 'completed') throw new Error('match already completed')
   if (winnerId !== match.participantAId && winnerId !== match.participantBId) {
     throw new Error('winner is not a participant of this match')

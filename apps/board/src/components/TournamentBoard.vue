@@ -32,6 +32,11 @@ const legIndex = ref(0)
 // Server participant ids for the two seats, indexed like `players`.
 const matchIds = ref<[string, string] | null>(null)
 const legsWon = ref<[number, number]>([0, 0])
+// True while a leg report is in flight, so the button can't be tapped twice.
+const reporting = ref(false)
+// Why the last report was refused. Scoped to the report so an older connection
+// message can never masquerade as a failed result.
+const reportError = ref('')
 
 function legsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1
@@ -116,18 +121,33 @@ watch(
 )
 
 // On a finished leg, report the winner; advance to the next leg or end the match.
-function reportLegAndContinue() {
+// The local tally only moves once the server has acknowledged the leg, so a rejected
+// report leaves the board on the result screen and the button available for a retry.
+async function reportLegAndContinue() {
   const ids = matchIds.value
   const winnerSeat = finishOrder.value[0]
-  const bestOf = tour.assignment.value?.match.bestOf ?? 1
-  if (!ids || (winnerSeat !== 0 && winnerSeat !== 1)) return
+  const match = tour.assignment.value?.match
+  if (!ids || !match || (winnerSeat !== 0 && winnerSeat !== 1) || reporting.value) return
 
-  tour.reportLegResult(legIndex.value, ids[winnerSeat])
+  const reportedLeg = legIndex.value
   const tally: [number, number] = [...legsWon.value]
   tally[winnerSeat] += 1
+
+  reporting.value = true
+  reportError.value = ''
+  const result = await tour.reportLegResult(reportedLeg, ids[winnerSeat])
+  reporting.value = false
+  if (!result.ok) {
+    reportError.value = `${result.message} Bitte erneut senden.`
+    return
+  }
+  // Completing a match frees the floor, so the server can assign the next one while we
+  // wait for the ack. From that point the assignment watcher owns the board state.
+  if (tour.assignment.value?.match.id !== match.id) return
+
   legsWon.value = tally
 
-  const need = legsToWin(bestOf)
+  const need = legsToWin(match.bestOf)
   if (tally[0] >= need || tally[1] >= need) {
     tournamentMode.value = false
     matchIds.value = null
@@ -170,14 +190,23 @@ function reportLegAndContinue() {
     @continue="continuePlaying"
   >
     <template #result-actions>
-      <button v-if="isGameOver" class="primary" @click="reportLegAndContinue">
-        Ergebnis an Server melden →︎
+      <button v-if="isGameOver" class="primary" :disabled="reporting" @click="reportLegAndContinue">
+        {{ reporting ? 'Wird gesendet…' : 'Ergebnis an Server melden →︎' }}
       </button>
+      <p v-if="isGameOver && reportError" class="report-error">{{ reportError }}</p>
     </template>
   </GameScreen>
 </template>
 
 <style scoped>
+.report-error {
+  max-width: 520px;
+  color: #f87171;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .tournament-waiting {
   height: 100%;
   display: flex;
