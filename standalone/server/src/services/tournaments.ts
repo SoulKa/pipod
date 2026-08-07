@@ -19,6 +19,7 @@ import {
 import { repo } from '../repo'
 import { computeStandings, generateRoundRobin, generateSingleElimination } from '../engine'
 import { resolveByes } from './matches'
+import { syncTournamentStatus } from './tournamentStatus'
 
 export function createTournament(name: string): Tournament {
   const row: Tournament = {
@@ -244,39 +245,43 @@ export function generateStage(
         })
       }
     })
-    return repo.listStageMatches(stageId)
+  } else {
+    // Knockout: seed from a prior group stage if present, else by participant seed.
+    const priorGroupStage = repo
+      .listStages(stage.tournamentId)
+      .filter((s) => s.type === 'group' && s.order < stage.order)
+      .at(-1)
+
+    const seedIds = priorGroupStage
+      ? qualifiersFromGroupStage(priorGroupStage, opts.qualifiersPerGroup ?? 2)
+      : roster.map((p) => p.id)
+
+    const bracket = generateSingleElimination(seedIds)
+    const idByLocal = new Map(bracket.map((m) => [m.localId, nanoid()] as const))
+
+    for (const m of bracket) {
+      insertMatch(
+        stage,
+        {
+          round: m.round,
+          slot: m.slot,
+          participantAId: m.aId,
+          participantBId: m.bId,
+          status: m.aId && m.bId ? 'ready' : 'pending',
+          nextMatchId: m.nextLocalId ? idByLocal.get(m.nextLocalId)! : null,
+          nextSlot: m.nextSlot,
+        },
+        idByLocal.get(m.localId)!,
+      )
+    }
+
+    resolveByes(stageId)
   }
 
-  // Knockout: seed from a prior group stage if present, else by participant seed.
-  const priorGroupStage = repo
-    .listStages(stage.tournamentId)
-    .filter((s) => s.type === 'group' && s.order < stage.order)
-    .at(-1)
-
-  const seedIds = priorGroupStage
-    ? qualifiersFromGroupStage(priorGroupStage, opts.qualifiersPerGroup ?? 2)
-    : roster.map((p) => p.id)
-
-  const bracket = generateSingleElimination(seedIds)
-  const idByLocal = new Map(bracket.map((m) => [m.localId, nanoid()] as const))
-
-  for (const m of bracket) {
-    insertMatch(
-      stage,
-      {
-        round: m.round,
-        slot: m.slot,
-        participantAId: m.aId,
-        participantBId: m.bId,
-        status: m.aId && m.bId ? 'ready' : 'pending',
-        nextMatchId: m.nextLocalId ? idByLocal.get(m.nextLocalId)! : null,
-        nextSlot: m.nextSlot,
-      },
-      idByLocal.get(m.localId)!,
-    )
-  }
-
-  resolveByes(stageId)
+  // The blanket 'active' above is a starting guess; correct it now that the matches
+  // exist — a bracket settled entirely by byes is already done, and one that had
+  // nothing to schedule never left setup.
+  syncTournamentStatus(stage.tournamentId)
   return repo.listStageMatches(stageId)
 }
 

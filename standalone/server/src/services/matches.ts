@@ -6,6 +6,7 @@ import type { Match } from '@pipod/shared'
 import { db } from '../db/client'
 import { legs, matches } from '../db/schema'
 import { repo } from '../repo'
+import { syncTournamentStatus } from './tournamentStatus'
 
 /** Legs required to win a best-of-N match. */
 export function legsToWin(bestOf: number): number {
@@ -204,6 +205,11 @@ export function reportLeg(
 
   const updated = repo.getMatch(matchId)!
   const changed: Match[] = [updated]
-  if (decided) changed.push(...advanceWinner(updated))
+  if (decided) {
+    changed.push(...advanceWinner(updated))
+    // The deciding leg of the last match is what finishes a tournament; callers
+    // already broadcast a snapshot afterwards, which carries the new status.
+    syncTournamentStatus(updated.tournamentId)
+  }
   return { match: updated, changed }
 }

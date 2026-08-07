@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import type { StageType } from '@pipod/shared'
 import { useTournamentFeed } from '../feed'
+import { buildBracketRounds, championOf } from '../bracket'
+import BracketTree from '../components/BracketTree.vue'
 
 const STAGE_TYPE_LABELS: Record<StageType, string> = {
   group: 'Gruppe',
@@ -30,6 +32,21 @@ const stageGroups = computed(() =>
     matches: (detail.value?.matches ?? []).filter((m) => m.stageId === stage.id),
   })),
 )
+
+const isCompleted = computed(() => detail.value?.tournament.status === 'completed')
+
+/**
+ * The tournament winner is whoever won the final of its last knockout stage. A
+ * group-only tournament has no such match, so the standings table speaks for it.
+ */
+const champion = computed(() => {
+  if (!isCompleted.value) return null
+  const knockout = [...stageGroups.value]
+    .sort((x, y) => x.stage.order - y.stage.order)
+    .filter((s) => s.stage.type === 'knockout')
+    .at(-1)
+  return knockout ? championOf(buildBracketRounds(knockout.matches)) : null
+})
 </script>
 
 <template>
@@ -39,15 +56,20 @@ const stageGroups = computed(() =>
         <p class="eyebrow">Turnierübersicht</p>
         <h1>{{ detail.tournament.name }}</h1>
       </div>
-      <span
-        :class="[
-          'connection-status',
-          connected ? 'connection-status--on' : 'connection-status--off',
-        ]"
-      >
-        <span class="connection-dot"></span>
-        {{ connected ? 'Live-Feed' : 'Offline' }}
-      </span>
+      <div class="overview-badges">
+        <span v-if="isCompleted" class="completed-chip">
+          🏆 Turnier beendet<template v-if="champion"> · Sieger: {{ nameOf(champion) }}</template>
+        </span>
+        <span
+          :class="[
+            'connection-status',
+            connected ? 'connection-status--on' : 'connection-status--off',
+          ]"
+        >
+          <span class="connection-dot"></span>
+          {{ connected ? 'Live-Feed' : 'Offline' }}
+        </span>
+      </div>
     </header>
 
     <section class="live-zone">
@@ -57,7 +79,13 @@ const stageGroups = computed(() =>
           <h2>Live-Ergebnisse</h2>
         </div>
         <p class="pd-muted">
-          {{ liveMatches.length ? `${liveMatches.length} live` : 'Warten auf ein Board' }}
+          {{
+            liveMatches.length
+              ? `${liveMatches.length} live`
+              : isCompleted
+                ? 'Alle Matches gespielt'
+                : 'Warten auf ein Board'
+          }}
         </p>
       </div>
 
@@ -86,7 +114,9 @@ const stageGroups = computed(() =>
         </article>
       </div>
       <div v-else class="pd-panel pd-panel--compact live-empty">
-        <p class="pd-muted">Aktuell läuft kein Match.</p>
+        <p class="pd-muted">
+          {{ isCompleted ? 'Turnier beendet.' : 'Aktuell läuft kein Match.' }}
+        </p>
       </div>
     </section>
 
@@ -136,6 +166,7 @@ const stageGroups = computed(() =>
             v-for="{ stage, matches } in stageGroups"
             :key="stage.id"
             class="pd-panel stage-card"
+            :class="{ 'stage-card--wide': stage.type === 'knockout' }"
           >
             <div class="stage-card-heading">
               <div>
@@ -144,7 +175,13 @@ const stageGroups = computed(() =>
               </div>
               <span class="match-count">{{ matches.length }} Matches</span>
             </div>
-            <div v-if="matches.length" class="match-list">
+            <BracketTree
+              v-if="matches.length && stage.type === 'knockout'"
+              :matches="matches"
+              :name-of="nameOf"
+              :live="live"
+            />
+            <div v-else-if="matches.length" class="match-list">
               <div v-for="m in matches" :key="m.id" class="match-row">
                 <span :class="{ win: m.winnerId === m.participantAId }">{{
                   nameOf(m.participantAId)
@@ -199,6 +236,15 @@ const stageGroups = computed(() =>
   text-transform: uppercase;
 }
 
+.overview-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pd-space-2);
+}
+
+.completed-chip,
 .connection-status,
 .match-count {
   display: inline-flex;
@@ -213,6 +259,12 @@ const stageGroups = computed(() =>
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.completed-chip {
+  border-color: var(--pd-success);
+  background: var(--pd-success-soft);
+  color: var(--pd-success);
 }
 
 .connection-status--on {
@@ -342,6 +394,11 @@ const stageGroups = computed(() =>
 
 .stage-card {
   min-width: 0;
+}
+
+/* A bracket needs the full row: its columns double with every earlier round. */
+.stage-card--wide {
+  grid-column: 1 / -1;
 }
 
 .stage-card-heading {
