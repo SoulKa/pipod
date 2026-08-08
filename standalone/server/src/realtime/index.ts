@@ -4,6 +4,7 @@ import type {
   BoardGameSnapshot,
   ClientToServerEvents,
   Match,
+  Seat,
   ServerToClientEvents,
   SocketData,
 } from '@pipod/shared'
@@ -209,7 +210,10 @@ export function setupRealtime(io: IoServer): () => void {
               toBoardSession(session),
             )
           } else {
-            const nextLeg = createAssignmentSnapshot(match)
+            // Read the outgoing session before it is replaced: it holds the starter the
+            // board picked for this match, which the next leg alternates from.
+            const starter = getFloorSession(floor.id)?.snapshot?.tournament?.firstLegStarter ?? null
+            const nextLeg = createAssignmentSnapshot(match, starter)
             const session = initializeFloorSession(floor, match, nextLeg)
             io.to(floorRoomFor(match.tournamentId, floor.id)).emit(
               'board:session',
@@ -305,8 +309,8 @@ function participantsFor(match: Match): { id: string; name: string }[] {
     .map((id) => ({ id, name: names.get(id) ?? 'Unknown' }))
 }
 
-function createAssignmentSnapshot(match: Match): BoardGameSnapshot {
-  return createMatchSnapshot(match, participantsFor(match))
+function createAssignmentSnapshot(match: Match, firstLegStarter: Seat | null): BoardGameSnapshot {
+  return createMatchSnapshot(match, participantsFor(match), firstLegStarter)
 }
 
 function toBoardSession(session: { snapshot: BoardGameSnapshot | null; revision: number }): {

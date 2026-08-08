@@ -342,6 +342,79 @@ describe('match-end race conditions over websockets', () => {
   )
 })
 
+describe('starting player over websockets', () => {
+  /** A single live best-of-3 match on one floor, dispatched to a registered board. */
+  async function liveMatch() {
+    const { tournament, roster, floors } = await createTournament(
+      'Starter Cup',
+      ['Ann', 'Bob'],
+      ['Floor 1'],
+    )
+    const floor = floors[0]!
+    const board = await openBoard('board-1', tournament.id, floor.id)
+    const stage = await rest.post<Stage>(`/api/tournaments/${tournament.id}/stages`, {
+      name: 'Final',
+      type: 'knockout',
+      format: 'single_elimination',
+      bestOf: 3,
+      startScore: 501,
+      outMode: 'double',
+    })
+    await rest.post<Match[]>(`/api/stages/${stage.id}/generate`, {})
+    const assignment = await board.nextAssignment()
+    expect(assignment).not.toBeNull()
+    return { tournament, roster, floor, board, assignment: assignment! }
+  }
+
+  it(
+    'dispatches a match with nobody chosen, so the board asks',
+    async () => {
+      const { board } = await liveMatch()
+      expect(board.session.snapshot?.tournament?.firstLegStarter).toBeNull()
+      expect(board.session.snapshot?.currentPlayerIndex).toBe(0)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'alternates the throw into the next leg it seeds',
+    async () => {
+      const { roster, board } = await liveMatch()
+      await board.chooseStarter(1)
+      expect(board.session.snapshot?.currentPlayerIndex).toBe(1)
+
+      const ack = await board.playLeg(roster[0]!.id)
+      expect(ack.ok).toBe(true)
+
+      expect(board.session.snapshot?.tournament).toMatchObject({
+        legIndex: 1,
+        firstLegStarter: 1,
+      })
+      expect(board.session.snapshot?.currentPlayerIndex).toBe(0)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'keeps the choice for a board that reconnects mid-match',
+    async () => {
+      const { tournament, floor, board } = await liveMatch()
+      await board.chooseStarter(1)
+
+      board.close()
+      const floorRoom = `floor:${tournament.id}:${floor.id}`
+      await waitUntil(() => !server.io.sockets.adapter.rooms.get(floorRoom)?.size, {
+        label: 'the floor room to empty',
+      })
+
+      const reconnected = await openBoard('board-1', tournament.id, floor.id)
+      expect(reconnected.session.snapshot?.tournament?.firstLegStarter).toBe(1)
+      expect(reconnected.session.snapshot?.currentPlayerIndex).toBe(1)
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
 describe('server log stream over websockets', () => {
   const LOG_ROOM = 'logs'
 

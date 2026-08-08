@@ -176,15 +176,18 @@ export function useDartGame() {
     bannerIndex.value = prev.bannerIndex
   }
 
-  // Start a game with the given players (in play order) and options.
-  function startGame(config: { names: string[] } & GameOptions) {
+  // Start a game with the given players (in play order) and options. `startIndex` lets a
+  // caller hand the first throw to someone other than the first seat without reordering
+  // the roster — tournament seats stay aligned with the server's participant ids.
+  function startGame(config: { names: string[]; startIndex?: number } & GameOptions) {
     options.value = { startScore: config.startScore, outMode: config.outMode }
     players.value = config.names.map((name) => ({
       name,
       score: config.startScore,
       lastThrows: [],
     }))
-    currentPlayerIndex.value = 0
+    const startIndex = config.startIndex ?? 0
+    currentPlayerIndex.value = startIndex < players.value.length ? startIndex : 0
     currentThrows.value = []
     finishOrder.value = []
     bannerIndex.value = null

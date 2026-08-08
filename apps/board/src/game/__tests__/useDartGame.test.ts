@@ -15,6 +15,19 @@ describe('startGame', () => {
     expect(game.players.value.map((p) => p.score)).toEqual([501, 501])
     expect(game.currentPlayerIndex.value).toBe(0)
   })
+
+  it('hands the first throw to startIndex without reordering the roster', () => {
+    const game = useDartGame()
+    game.startGame({ names: ['A', 'B'], startScore: 301, outMode: 'single', startIndex: 1 })
+    expect(game.currentPlayerIndex.value).toBe(1)
+    expect(game.players.value.map((p) => p.name)).toEqual(['A', 'B'])
+  })
+
+  it('falls back to the first seat when startIndex has no player', () => {
+    const game = useDartGame()
+    game.startGame({ names: ['A', 'B'], startScore: 301, outMode: 'single', startIndex: 5 })
+    expect(game.currentPlayerIndex.value).toBe(0)
+  })
 })
 
 describe('scoring a turn', () => {

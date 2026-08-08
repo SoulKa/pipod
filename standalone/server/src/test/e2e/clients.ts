@@ -13,9 +13,11 @@ import type {
   LogLine,
   Match,
   MatchAssignment,
+  Seat,
   ServerToClientEvents,
   TournamentSnapshot,
 } from '@pipod/shared'
+import { legStarterSeat } from '@pipod/shared'
 import { EventRecorder } from './events'
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>
@@ -140,6 +142,19 @@ export class BoardClient {
       this.socket.emitWithAck('match:legResult', { matchId, legIndex, winnerId }),
       'match:legResult',
     )
+  }
+
+  /** Pick who throws first, the way the board's starter screen does. */
+  async chooseStarter(seat: Seat): Promise<BoardSnapshotResponse> {
+    const snapshot = this.session.snapshot
+    if (!snapshot?.tournament) throw new Error('board has no assigned match to start')
+    const response = await this.uploadSnapshot({
+      ...snapshot,
+      currentPlayerIndex: legStarterSeat(seat, snapshot.tournament.legIndex),
+      tournament: { ...snapshot.tournament, firstLegStarter: seat },
+    })
+    if (!response.ok) throw new Error(`starter choice rejected: ${response.message}`)
+    return response
   }
 
   /**
