@@ -54,6 +54,8 @@ export function useDartGame() {
   // Monotonic tally of "lemon" turns (5+1+20 singles). The UI watches it for increments
   // to fire the gag, so it is deliberately never reset — a reset would look like an event.
   const lemonTurns = ref(0)
+  // Same idea for the crowd-pleasing darts: monotonic, watched for increments by the UI.
+  const bigDarts = ref(0)
 
   // Snapshot stack powering undo. Each entry is the full state *before* a throw.
   const history = ref<Snapshot[]>([])
@@ -140,6 +142,10 @@ export function useDartGame() {
     // Checked before the bust/finish branches: the darts were thrown either way, so a
     // turn that busts on the third dart still earns its lemons.
     if (isLemonTurn(currentThrows.value)) lemonTurns.value += 1
+    // The two darts worth a cheer: the maximum (T20, 60) and the bull (50).
+    if ((base === 20 && multiplier === 3) || (base === 25 && multiplier === 2)) {
+      bigDarts.value += 1
+    }
 
     // Below zero always busts. In double-out, leaving exactly 1 also busts
     // (you can't check out from 1), as does reaching 0 on a non-double.
@@ -265,6 +271,7 @@ export function useDartGame() {
     finishOrder,
     bannerIndex,
     lemonTurns,
+    bigDarts,
     currentPlayer,
     isGameOver,
     canUndo,

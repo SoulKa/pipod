@@ -183,3 +183,56 @@ describe('lemonTurns', () => {
     expect(game.lemonTurns.value).toBe(1)
   })
 })
+
+describe('bigDarts', () => {
+  it('starts at zero', () => {
+    const game = start(301, 'single')
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('counts a triple 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    expect(game.bigDarts.value).toBe(1)
+  })
+
+  it('counts a bull', () => {
+    const game = start(301, 'single')
+    game.throwDart(25, 2)
+    expect(game.bigDarts.value).toBe(1)
+  })
+
+  it('ignores the outer bull, which is only 25', () => {
+    const game = start(301, 'single')
+    game.throwDart(25, 1)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('ignores a single or double 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(20, 2)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('ignores triples of other numbers', () => {
+    const game = start(301, 'single')
+    game.throwDart(19, 3)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('counts each one, so three in a turn fire three times', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    game.throwDart(25, 2)
+    game.throwDart(20, 3)
+    expect(game.bigDarts.value).toBe(3)
+  })
+
+  it('still counts one that busts the turn', () => {
+    const game = start(40, 'single')
+    game.throwDart(20, 3) // 40 - 60 < 0
+    expect(game.players.value[0]!.score).toBe(40)
+    expect(game.bigDarts.value).toBe(1)
+  })
+})

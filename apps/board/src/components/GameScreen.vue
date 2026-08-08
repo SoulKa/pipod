@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { pickClip } from '../effects/celebrationClips'
 import FireworksCanvas from './FireworksCanvas.vue'
 import LemonBurst from './LemonBurst.vue'
 import NumberPad from './NumberPad.vue'
 import PlayerBoard from './PlayerBoard.vue'
+import WowPopup from './WowPopup.vue'
 import type { DartThrow, GameOptions, Multiplier, Player } from '../game/useDartGame'
 import type { CheckoutRoute } from '../game/checkout'
 
@@ -22,9 +24,11 @@ const props = withDefaults(
     bannerIndex: number | null
     // Running tally of 5+1+20 turns; each increment fires the lemon gag.
     lemonTurns?: number
+    // Running tally of T20s and bulls; each increment plays a celebration clip.
+    bigDarts?: number
     allowNewGame?: boolean
   }>(),
-  { allowNewGame: true, lemonTurns: 0 },
+  { allowNewGame: true, lemonTurns: 0, bigDarts: 0 },
 )
 
 const emit = defineEmits<{
@@ -67,24 +71,40 @@ function confirmNewGame() {
   emit('new-game')
 }
 
-// The lemon gag is non-blocking: it plays over the live board and clears itself, so the
-// turn carries on underneath rather than waiting for a tap like the win overlay does.
-// Long enough for LemonBurst's 3s of launches plus the last rocket's climb and fade.
-const LEMON_DURATION_MS = 5600
-const showLemons = ref(false)
-let lemonTimer: ReturnType<typeof setTimeout> | undefined
+// The in-play celebrations are non-blocking: they play over the live board and clear
+// themselves, so the turn carries on underneath rather than waiting for a tap like the
+// win overlay does. `choose` runs per occurrence, so what is shown — and for how long —
+// can differ each time.
+function revealsOnTick<T>(tally: () => number, choose: () => { shown: T; durationMs: number }) {
+  const current = shallowRef<T | null>(null)
+  let timer: ReturnType<typeof setTimeout> | undefined
 
-watch(
-  () => props.lemonTurns,
-  (count, previous) => {
+  watch(tally, (count, previous) => {
     if (count <= previous) return
-    showLemons.value = true
-    clearTimeout(lemonTimer)
-    lemonTimer = setTimeout(() => (showLemons.value = false), LEMON_DURATION_MS)
-  },
+    const { shown, durationMs } = choose()
+    current.value = shown
+    clearTimeout(timer)
+    timer = setTimeout(() => (current.value = null), durationMs)
+  })
+
+  onBeforeUnmount(() => clearTimeout(timer))
+  return current
+}
+
+// Long enough for LemonBurst's 3s of launches plus the last rocket's climb and fade.
+const showLemons = revealsOnTick(
+  () => props.lemonTurns,
+  () => ({ shown: true, durationMs: 5600 }),
 )
 
-onBeforeUnmount(() => clearTimeout(lemonTimer))
+// Each big dart draws a clip at random, and each clip sets its own time on screen.
+const wowClip = revealsOnTick(
+  () => props.bigDarts,
+  () => {
+    const clip = pickClip()
+    return { shown: clip, durationMs: clip.durationMs }
+  },
+)
 </script>
 
 <template>
@@ -120,6 +140,10 @@ onBeforeUnmount(() => clearTimeout(lemonTimer))
          burst mid-flight. Sits before the overlays in DOM order, so a lemon that also
          finishes the leg still renders under the result card. -->
     <LemonBurst v-if="showLemons" :key="lemonTurns" />
+
+    <!-- Keyed so a second big dart replays from the first frame, even if it draws the
+         same clip again. -->
+    <WowPopup v-if="wowClip" :key="bigDarts" :clip="wowClip" />
 
     <!-- Result overlay: shown when a player finishes or the game ends. The celebration
          runs for as long as the overlay is up, i.e. until a button is pressed. -->
