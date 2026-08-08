@@ -112,6 +112,12 @@ export function createLogger(opts: PrettyLoggerOptions = {}): FastifyBaseLogger 
 }
 
 /**
+ * The process-wide logger, for services and socket handlers that have no request in
+ * hand. Fastify logs through this same instance, so the ordering of lines is real.
+ */
+export const log = createLogger()
+
+/**
  * Replaces Fastify's "incoming request" / "request completed" pair with one line per
  * request: `GET  /api/tournaments 200 3ms`.
  */

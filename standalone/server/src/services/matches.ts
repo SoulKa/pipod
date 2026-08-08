@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import type { Match } from '@pipod/shared'
 import { db } from '../db/client'
 import { legs, matches } from '../db/schema'
+import { log } from '../logger'
 import { repo } from '../repo'
 import { syncTournamentStatus } from './tournamentStatus'
 
@@ -13,12 +14,28 @@ export function legsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1
 }
 
+/** Participant name for log lines — ids alone make a match log unreadable. */
+function participantName(tournamentId: string, participantId: string | null): string {
+  if (!participantId) return 'tbd'
+  return (
+    repo.listParticipants(tournamentId).find((p) => p.id === participantId)?.name ?? participantId
+  )
+}
+
+/** `Ann vs Bob`, the way an operator reads a match. */
+function pairing(match: Match): string {
+  const a = participantName(match.tournamentId, match.participantAId)
+  const b = participantName(match.tournamentId, match.participantBId)
+  return `${a} vs ${b}`
+}
+
 /** Mark a ready match as live (a board has claimed it). */
 export function claimMatch(matchId: string): Match {
   const match = repo.getMatch(matchId)
   if (!match) throw new Error('match not found')
   if (match.status === 'completed') throw new Error('match already completed')
   db.update(matches).set({ status: 'live' }).where(eq(matches.id, matchId)).run()
+  log.info({ match: matchId, players: pairing(match) }, 'match claimed')
   return repo.getMatch(matchId)!
 }
 
@@ -53,6 +70,7 @@ export function assignMatchFloor(
   if (floorId === null) {
     db.update(matches).set({ floorId: null, queueOrder: 0 }).where(eq(matches.id, matchId)).run()
     if (previousFloorId) renumberFloorQueue(previousFloorId)
+    log.debug({ match: matchId, players: pairing(match) }, 'match returned to the backlog')
     return repo.getMatch(matchId)!
   }
 
@@ -69,6 +87,10 @@ export function assignMatchFloor(
   db.update(matches).set({ floorId }).where(eq(matches.id, matchId)).run()
   writeQueueOrder(ordered.map((m) => m.id))
   if (previousFloorId && previousFloorId !== floorId) renumberFloorQueue(previousFloorId)
+  log.debug(
+    { match: matchId, players: pairing(match), floor: floor.name, position: index },
+    'match queued on floor',
+  )
   return repo.getMatch(matchId)!
 }
 
@@ -84,6 +106,7 @@ export function reorderFloorQueue(floorId: string, matchIds: string[]): void {
   )
   const ordered = matchIds.filter((id) => onFloor.has(id))
   writeQueueOrder(ordered)
+  log.debug({ floor: floor.name, matches: ordered.length }, 'floor queue reordered')
 }
 
 /** Start a floor-assigned match only after dispatching it to that floor's board. */
@@ -116,6 +139,15 @@ export function advanceWinner(match: Match): Match[] {
     .set({ ...patch, status: bothSet ? 'ready' : next.status })
     .where(eq(matches.id, next.id))
     .run()
+  log.debug(
+    {
+      winner: participantName(match.tournamentId, match.winnerId),
+      into: next.id,
+      round: next.round,
+      ready: !!bothSet,
+    },
+    'winner advanced in the bracket',
+  )
   return [repo.getMatch(next.id)!]
 }
 
@@ -137,6 +169,10 @@ export function resolveByes(stageId: string): Match[] {
       const winnerId = (m.participantAId ?? m.participantBId)!
       db.update(matches).set({ status: 'completed', winnerId }).where(eq(matches.id, m.id)).run()
       const completed = repo.getMatch(m.id)!
+      log.debug(
+        { match: m.id, round: m.round, winner: participantName(m.tournamentId, winnerId) },
+        'bye resolved',
+      )
       changed.push(completed, ...advanceWinner(completed))
       progressed = true
     }
@@ -167,6 +203,7 @@ export function reportLeg(
     if (recorded.winnerId !== winnerId) {
       throw new Error(`leg ${legIndex} was already reported with a different winner`)
     }
+    log.debug({ match: matchId, leg: legIndex }, 'leg replayed by the board, already recorded')
     return { match, changed: [] }
   }
 
@@ -205,7 +242,26 @@ export function reportLeg(
 
   const updated = repo.getMatch(matchId)!
   const changed: Match[] = [updated]
+  const score = `${legsA}-${legsB}`
+  log.info(
+    {
+      match: matchId,
+      leg: legIndex,
+      winner: participantName(match.tournamentId, winnerId),
+      score,
+    },
+    'leg reported',
+  )
   if (decided) {
+    log.info(
+      {
+        match: matchId,
+        players: pairing(match),
+        winner: participantName(match.tournamentId, matchWinner),
+        score,
+      },
+      'match completed',
+    )
     changed.push(...advanceWinner(updated))
     // The deciding leg of the last match is what finishes a tournament; callers
     // already broadcast a snapshot afterwards, which carries the new status.

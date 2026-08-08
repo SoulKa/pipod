@@ -6,6 +6,8 @@ import { createLogger, PrettyLogController, type PrettyLoggerOptions } from './l
 function testLogger(opts: PrettyLoggerOptions = {}) {
   const lines: string[] = []
   const logger = createLogger({
+    // Explicit level: the suite runs with LOG_LEVEL=silent to keep other tests quiet.
+    level: 'trace',
     colors: false,
     now: () => new Date(2026, 0, 2, 12, 4, 31),
     write: (line) => lines.push(line),

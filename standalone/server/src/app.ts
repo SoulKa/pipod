@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import cors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
 import { env } from './env'
-import { createLogger, PrettyLogController } from './logger'
+import { log, PrettyLogController } from './logger'
 import { registerRoutes } from './routes'
 
 /**
@@ -15,7 +15,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   // Fastify rejects `logger` and `loggerInstance` together, so the two modes are exclusive.
   const logging: FastifyServerOptions =
     (opts.logger ?? true)
-      ? { loggerInstance: createLogger(), logController: new PrettyLogController() }
+      ? { loggerInstance: log, logController: new PrettyLogController() }
       : { logger: false }
   const app = Fastify(logging)
 

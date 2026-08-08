@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import type { Tournament } from '@pipod/shared'
 import { db } from '../db/client'
 import { tournaments } from '../db/schema'
+import { log } from '../logger'
 import { repo } from '../repo'
 import { assignMatchFloor } from './matches'
 
@@ -31,6 +32,7 @@ export function runAutoAssign(tournamentId: string): void {
 
   // listMatches is ordered by round/slot, so earlier rounds are scheduled first.
   const candidates = all.filter((m) => m.status === 'ready' && m.floorId === null)
+  let assigned = 0
   for (const match of candidates) {
     const players = [match.participantAId, match.participantBId].filter((id): id is string => !!id)
     if (players.some((id) => busy.has(id))) continue
@@ -40,6 +42,16 @@ export function runAutoAssign(tournamentId: string): void {
     assignMatchFloor(match.id, target.id)
     queueLen.set(target.id, (queueLen.get(target.id) ?? 0) + 1)
     players.forEach((id) => busy.add(id))
+    assigned++
+  }
+
+  // The backlog remainder is the interesting half: it explains why a free floor stays
+  // empty (both of that match's players are already booked elsewhere).
+  if (assigned || candidates.length) {
+    log.info(
+      { tournament: tournamentId, assigned, waiting: candidates.length - assigned },
+      'auto-assign pass finished',
+    )
   }
 }
 
@@ -48,6 +60,10 @@ export function setAutoAssign(tournamentId: string, enabled: boolean): Tournamen
   const tournament = repo.getTournament(tournamentId)
   if (!tournament) throw new Error('tournament not found')
   db.update(tournaments).set({ autoAssign: enabled }).where(eq(tournaments.id, tournamentId)).run()
+  log.info(
+    { tournament: tournamentId, name: tournament.name, enabled },
+    'auto-assign setting changed',
+  )
   if (enabled) runAutoAssign(tournamentId)
   return { ...tournament, autoAssign: enabled }
 }

@@ -8,6 +8,7 @@ import type {
   SocketData,
 } from '@pipod/shared'
 import { boardSnapshotPayloadSchema } from '@pipod/shared'
+import { log } from '../logger'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
 import { maybeAutoAssign } from '../services/scheduler'
@@ -39,15 +40,40 @@ export function setupRealtime(io: IoServer): void {
   setIo(io)
 
   io.on('connection', (socket: BoardSocket) => {
+    log.debug({ socket: socket.id }, 'client connected')
+
+    socket.on('disconnect', (reason) => {
+      const { boardId, floorId, tournamentId } = socket.data
+      if (!boardId) {
+        log.debug({ socket: socket.id, reason }, 'client disconnected')
+        return
+      }
+      const floor = floorId ? repo.getFloor(floorId) : undefined
+      // A board dropping off mid-tournament is the thing an operator needs to see:
+      // that floor stops receiving matches until it comes back.
+      log.warn(
+        { board: boardId, floor: floor?.name ?? floorId, tournament: tournamentId, reason },
+        'board disconnected',
+      )
+    })
+
     socket.on('board:register', ({ boardId, tournamentId, floorId }) => {
       const floor = repo.getFloor(floorId)
       if (!floor || floor.tournamentId !== tournamentId) {
+        log.warn(
+          { board: boardId, floor: floorId, tournament: tournamentId },
+          'board registration rejected: floor is not part of this tournament',
+        )
         socket.emit('error:message', 'selected floor does not belong to this tournament')
         return
       }
       const nextFloorRoom = floorRoomFor(tournamentId, floorId)
       const occupants = io.sockets.adapter.rooms.get(nextFloorRoom)
       if (occupants && !(occupants.size === 1 && socket.rooms.has(nextFloorRoom))) {
+        log.warn(
+          { board: boardId, floor: floor.name, tournament: tournamentId },
+          'board registration rejected: floor already has a board',
+        )
         socket.emit('error:message', 'another board is already connected to this floor')
         return
       }
@@ -63,6 +89,16 @@ export function setupRealtime(io: IoServer): void {
       const live = repo
         .listMatches(tournamentId)
         .find((match) => match.floorId === floorId && match.status === 'live')
+      log.info(
+        {
+          board: boardId,
+          floor: floor.name,
+          tournament: tournamentId,
+          // A resuming board picks its interrupted leg back up from the stored session.
+          resuming: !!(live && session.matchId === live.id && session.snapshot),
+        },
+        'board registered',
+      )
       if (live && session.matchId === live.id && session.snapshot) {
         socket.emit('board:session', toBoardSession(session))
         socket.emit('match:assigned', { match: live, participants: participantsFor(live) })
@@ -80,6 +116,7 @@ export function setupRealtime(io: IoServer): void {
       socket.join(roomFor(tournamentId))
       const snapshot = buildSnapshot(tournamentId)
       if (snapshot) socket.emit('tournament:state', snapshot)
+      log.debug({ socket: socket.id, tournament: tournamentId }, 'client subscribed to tournament')
     })
 
     socket.on('board:snapshot', (payload, reply) => {
@@ -97,6 +134,10 @@ export function setupRealtime(io: IoServer): void {
       const current = getFloorSession(floor.id) ?? ensureFloorSession(floor)
       const matchId = authorizeSnapshot(socket, floor.id, parsed.data.snapshot, current.matchId)
       if (matchId === undefined) {
+        log.warn(
+          { floor: floor.name, board: socket.data.boardId, match: current.matchId },
+          'board snapshot rejected: not authorized for this match',
+        )
         reply({ ok: false, message: 'snapshot is not authorized' })
         return
       }
@@ -109,6 +150,17 @@ export function setupRealtime(io: IoServer): void {
       )
       if (!saved) {
         const latest = getFloorSession(floor.id)
+        // Two boards (or a reconnected one) racing on the same floor — the board reloads
+        // the returned session, but the operator should know it happened.
+        log.warn(
+          {
+            floor: floor.name,
+            board: socket.data.boardId,
+            expected: parsed.data.expectedRevision,
+            current: latest?.revision,
+          },
+          'board snapshot rejected: revision conflict',
+        )
         reply({
           ok: false,
           message: 'snapshot revision conflict',
@@ -160,6 +212,10 @@ export function setupRealtime(io: IoServer): void {
         broadcastSnapshot(match.tournamentId)
         reply?.({ ok: true, match })
       } catch (err) {
+        log.warn(
+          { match: matchId, leg: legIndex, board: socket.data.boardId, reason: errorText(err) },
+          'leg result rejected',
+        )
         socket.emit('error:message', errorText(err))
         reply?.({ ok: false, message: errorText(err) })
       }
@@ -188,6 +244,15 @@ export function dispatchFloorMatch(match: Match): Match | null {
   if (state) broadcastLive(liveMatch.tournamentId, state)
   broadcastMatch(liveMatch)
   broadcastSnapshot(liveMatch.tournamentId)
+  log.info(
+    {
+      match: liveMatch.id,
+      floor: floor.name,
+      players: participants.map((p) => p.name).join(' vs '),
+      bestOf: liveMatch.bestOf,
+    },
+    'match started on floor',
+  )
   return liveMatch
 }
 
@@ -275,6 +340,10 @@ function rejectSnapshot(
   reply: (response: { ok: false; message: string }) => void,
   message: string,
 ): void {
+  log.warn(
+    { board: socket.data.boardId, floor: socket.data.floorId, reason: message },
+    'board snapshot rejected',
+  )
   socket.emit('error:message', message)
   reply({ ok: false, message })
 }

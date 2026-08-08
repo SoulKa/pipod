@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import type { Tournament, TournamentStatus } from '@pipod/shared'
 import { db } from '../db/client'
 import { tournaments } from '../db/schema'
+import { log } from '../logger'
 import { repo } from '../repo'
 
 /**
@@ -30,6 +31,10 @@ export function syncTournamentStatus(tournamentId: string): Tournament | null {
 
   if (status === tournament.status) return null
   db.update(tournaments).set({ status }).where(eq(tournaments.id, tournamentId)).run()
+  log.info(
+    { tournament: tournamentId, name: tournament.name, from: tournament.status, to: status },
+    'tournament status changed',
+  )
   return { ...tournament, status }
 }
 
