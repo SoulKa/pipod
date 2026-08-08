@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { createLogger, PrettyLogController, type PrettyLoggerOptions } from './logger'
+import {
+  createLogger,
+  PrettyLogController,
+  subscribeToLogs,
+  type LogRecord,
+  type PrettyLoggerOptions,
+} from './logger'
 
 /** A logger writing into an array, with a pinned clock so lines are comparable. */
 function testLogger(opts: PrettyLoggerOptions = {}) {
@@ -202,5 +208,83 @@ describe('PrettyLogController', () => {
     controller.requestCompleted(null, request, reply)
 
     expect(lines).toEqual([])
+  })
+})
+
+describe('subscribeToLogs', () => {
+  const stops: (() => void)[] = []
+
+  /** Subscribers live in module state, so every test has to detach its own. */
+  function collect(): LogRecord[] {
+    const records: LogRecord[] = []
+    stops.push(subscribeToLogs((record) => records.push(record)))
+    return records
+  }
+
+  afterEach(() => {
+    while (stops.length) stops.pop()!()
+  })
+
+  it('mirrors records the terminal would show even when stdout is silent', () => {
+    const records = collect()
+    const { logger, lines } = testLogger({ level: 'silent' })
+
+    logger.debug({ floor: 'Board 1' }, 'match queued on floor')
+
+    expect(lines).toEqual([])
+    expect(records).toEqual([
+      {
+        time: new Date(2026, 0, 2, 12, 4, 31).toISOString(),
+        level: 'debug',
+        message: 'match queued on floor',
+        fields: { floor: 'Board 1' },
+      },
+    ])
+  })
+
+  it('drops trace, which sits below the mirrored level', () => {
+    const records = collect()
+    const { logger } = testLogger()
+
+    logger.trace('very chatty')
+    logger.debug('still interesting')
+
+    expect(records.map((r) => r.level)).toEqual(['debug'])
+  })
+
+  it('carries the error stack as its own field', () => {
+    const records = collect()
+    const { logger } = testLogger()
+    const err = new Error('db is locked')
+    err.stack = 'Error: db is locked\n    at save (services/matches.ts:12)'
+
+    logger.error({ err }, 'leg result rejected')
+
+    expect(records[0]?.message).toBe('leg result rejected')
+    expect(records[0]?.stack).toContain('at save (services/matches.ts:12)')
+  })
+
+  it('stops delivering once unsubscribed', () => {
+    const records: LogRecord[] = []
+    const stop = subscribeToLogs((record) => records.push(record))
+    const { logger } = testLogger()
+
+    logger.info('before')
+    stop()
+    logger.info('after')
+
+    expect(records.map((r) => r.message)).toEqual(['before'])
+  })
+
+  it('keeps logging when a subscriber throws', () => {
+    stops.push(
+      subscribeToLogs(() => {
+        throw new Error('subscriber exploded')
+      }),
+    )
+    const { logger, lines } = testLogger()
+
+    expect(() => logger.info('still printed')).not.toThrow()
+    expect(lines).toEqual(['12:04:31 INFO  still printed'])
   })
 })

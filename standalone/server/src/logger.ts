@@ -7,11 +7,12 @@ import {
   type FastifyReply,
   type FastifyRequest,
 } from 'fastify'
+import type { LogLevel } from '@pipod/shared'
 import { env } from './env'
 
-const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const
+const LEVELS: readonly LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error', 'fatal']
 
-type Level = (typeof LEVELS)[number]
+type Level = LogLevel
 
 const RANK: Record<Level | 'silent', number> = {
   trace: 10,
@@ -44,6 +45,46 @@ const HIDDEN_FIELDS = new Set(['err', 'req', 'res', 'reqId'])
 /** Width of the `12:04:31 INFO  ` prefix, so stack traces stay aligned under the message. */
 const CONTINUATION_INDENT = ' '.repeat(15)
 
+/**
+ * Lowest level handed to subscribers. Deliberately below the default stdout level: the
+ * console's log terminal can show debug detail without restarting the server, and filters
+ * client-side instead.
+ */
+const MIRROR_LEVEL: Level = 'debug'
+
+/** A log line as data, for anything that forwards logs instead of printing them. */
+export interface LogRecord {
+  time: string
+  level: LogLevel
+  message: string
+  fields?: Record<string, string>
+  stack?: string
+}
+
+const listeners = new Set<(record: LogRecord) => void>()
+
+/**
+ * Mirror every log record at `MIRROR_LEVEL` or above to a listener, and return the
+ * unsubscribe. A listener must never log: that would recurse straight back into here.
+ */
+export function subscribeToLogs(listener: (record: LogRecord) => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function publish(record: LogRecord): void {
+  for (const listener of listeners) {
+    try {
+      listener(record)
+    } catch {
+      // A broken subscriber must not take down whatever was being logged, and logging the
+      // failure here would recurse. Dropping the line for that subscriber is the safe end.
+    }
+  }
+}
+
 export interface PrettyLoggerOptions {
   /** Lowest level to emit; defaults to `LOG_LEVEL` (`info`). */
   level?: string
@@ -70,7 +111,9 @@ export function createLogger(opts: PrettyLoggerOptions = {}): FastifyBaseLogger 
   const emit =
     (target: Level) =>
     (first: unknown, ...rest: unknown[]): void => {
-      if (RANK[target] < RANK[level]) return
+      const print = RANK[target] >= RANK[level]
+      const mirror = listeners.size > 0 && RANK[target] >= RANK[MIRROR_LEVEL]
+      if (!print && !mirror) return
 
       const { fields, message } = splitArgs(first, rest)
       const err = fields?.err instanceof Error ? fields.err : undefined
@@ -78,15 +121,28 @@ export function createLogger(opts: PrettyLoggerOptions = {}): FastifyBaseLogger 
       // instead is more useful, and lets the stack drop its now-duplicated header.
       const describesError = err !== undefined && (message === undefined || message === err.message)
       const headline = describesError ? `${err.name}: ${err.message}` : (message ?? '')
+      const details = collectFields(fields)
+      const trace = err ? stack(err, describesError) : undefined
+      const at = now()
 
-      const tag = paint(COLOR[target], target.toUpperCase().padEnd(5))
-      let line = `${paint(DIM, formatTime(now()))} ${tag} ${indentFrom(headline, 1)}`
+      if (print) {
+        const tag = paint(COLOR[target], target.toUpperCase().padEnd(5))
+        let line = `${paint(DIM, formatTime(at))} ${tag} ${indentFrom(headline, 1)}`
+        const rendered = renderFields(details, paint)
+        if (rendered) line += ` ${rendered}`
+        if (trace) line += `\n${indentFrom(trace, 0)}`
+        write(line)
+      }
 
-      const details = formatFields(fields, paint)
-      if (details) line += ` ${details}`
-      if (err) line += `\n${indentFrom(stack(err, describesError), 0)}`
-
-      write(line)
+      if (mirror) {
+        publish({
+          time: at.toISOString(),
+          level: target,
+          message: headline,
+          ...(details && { fields: details }),
+          ...(trace && { stack: trace }),
+        })
+      }
     }
 
   const logger: FastifyBaseLogger = {
@@ -180,19 +236,33 @@ function interpolate(template: string, args: unknown[]): string {
   return remaining.length ? `${filled} ${remaining.map(stringify).join(' ')}` : filled
 }
 
-function formatFields(
+/** Printable fields as strings, or undefined when the line carries none. */
+function collectFields(
   fields: Record<string, unknown> | undefined,
+): Record<string, string> | undefined {
+  if (!fields) return undefined
+  const entries = Object.entries(fields)
+    .filter(([key, value]) => !HIDDEN_FIELDS.has(key) && value !== undefined)
+    .map(([key, value]) => [key, stringify(value)] as const)
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+function renderFields(
+  fields: Record<string, string> | undefined,
   paint: (code: string, text: string) => string,
 ): string {
   if (!fields) return ''
   return Object.entries(fields)
-    .filter(([key, value]) => !HIDDEN_FIELDS.has(key) && value !== undefined)
-    .map(([key, value]) => `${paint(DIM, `${key}=`)}${stringify(value)}`)
+    .map(([key, value]) => {
+      // Quote only for the flat stdout line, where a space would read as the next field.
+      const shown = value.includes(' ') ? JSON.stringify(value) : value
+      return `${paint(DIM, `${key}=`)}${shown}`
+    })
     .join(' ')
 }
 
 function stringify(value: unknown): string {
-  if (typeof value === 'string') return value.includes(' ') ? JSON.stringify(value) : value
+  if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
     return String(value)
   }

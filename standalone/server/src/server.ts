@@ -45,7 +45,7 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
     InterServerEvents,
     SocketData
   >(app.server, { cors: { origin: true } })
-  setupRealtime(io)
+  const stopLogForwarding = setupRealtime(io)
 
   const host = opts.host ?? '0.0.0.0'
   await app.listen({ host, port: opts.port ?? 3000 })
@@ -57,6 +57,9 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
     // Close socket.io first: it holds the open connections that would otherwise keep
     // the HTTP server from shutting down.
     close: async () => {
+      // Drop the log subscription too, or a closed server keeps receiving records —
+      // the test suite boots a fresh stack per case.
+      stopLogForwarding()
       await io.close()
       await app.close()
     },

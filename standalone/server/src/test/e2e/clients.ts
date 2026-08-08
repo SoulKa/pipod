@@ -10,6 +10,7 @@ import type {
   DartThrow,
   LegResultResponse,
   LiveMatchState,
+  LogLine,
   Match,
   MatchAssignment,
   ServerToClientEvents,
@@ -229,6 +230,23 @@ export class SpectatorClient {
 
   matchUpdates(): Match[] {
     return this.events.all('match:updated')
+  }
+
+  /** Open the log terminal's stream. Nothing is replayed, so subscribe before acting. */
+  subscribeToLogs(): void {
+    this.socket.emit('logs:subscribe')
+  }
+
+  unsubscribeFromLogs(): void {
+    this.socket.emit('logs:unsubscribe')
+  }
+
+  waitForLog(predicate: (line: LogLine) => boolean, timeoutMs = 4000): Promise<LogLine> {
+    return this.events.wait('log:line', { predicate, timeoutMs })
+  }
+
+  logs(): LogLine[] {
+    return this.events.all('log:line')
   }
 
   close(): void {

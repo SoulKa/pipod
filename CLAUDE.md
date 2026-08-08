@@ -100,11 +100,16 @@ match lifecycle + bracket advancement live in `services/matches.ts`. SQLite live
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
 built console SPA when `CONSOLE_DIR` is set. Logging goes through `src/logger.ts` (plain text
 instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
-`app.log` / `request.log`, not `console.log`.
+`app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
+records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in
+the `logs` room, and a subscriber must never log (it would recurse).
 
 **Console (`standalone/console`).** Its typed REST client calls `/api`; its Socket.IO client
-receives tournament snapshots and live-match updates. In dev, Vite proxies `/api` and `/socket.io`
-to `SERVER_URL` (default `http://localhost:3000`).
+receives tournament snapshots and live-match updates. The shell (`App.vue`) also opens a
+session-long log feed (`serverLogs.ts` → `logs:subscribe`) and renders `LogTerminal.vue` as a
+bottom drawer (topbar button or Ctrl+backtick); the server forwards live lines only, so the
+buffer lives in the tab and filtering by level/text happens client-side. In dev, Vite proxies
+`/api` and `/socket.io` to `SERVER_URL` (default `http://localhost:3000`).
 
 **Launcher (`standalone/launcher`).** `src/renderer` is the Vue home screen (app tiles, store,
 full-screen settings); `src/main` is the Electron main process that installs/updates app bundles

@@ -341,3 +341,77 @@ describe('match-end race conditions over websockets', () => {
     TEST_TIMEOUT_MS,
   )
 })
+
+describe('server log stream over websockets', () => {
+  const LOG_ROOM = 'logs'
+
+  /** A console that is definitely in (or out of) the log room before the test acts. */
+  async function openLogWatcher(watching: boolean) {
+    const watcher = await SpectatorClient.connect(server.url)
+    clients.push(watcher)
+    const before = server.io.sockets.adapter.rooms.get(LOG_ROOM)?.size ?? 0
+    watcher.subscribeToLogs()
+    await waitUntil(() => (server.io.sockets.adapter.rooms.get(LOG_ROOM)?.size ?? 0) > before, {
+      label: 'the log room to accept the console',
+    })
+    if (!watching) {
+      watcher.unsubscribeFromLogs()
+      await waitUntil(() => (server.io.sockets.adapter.rooms.get(LOG_ROOM)?.size ?? 0) === before, {
+        label: 'the log room to release the console',
+      })
+    }
+    return watcher
+  }
+
+  it(
+    'forwards live lines with their level and fields',
+    async () => {
+      const watcher = await openLogWatcher(true)
+
+      const tournament = await rest.post<Tournament>('/api/tournaments', { name: 'Log Cup' })
+
+      const line = await watcher.waitForLog((entry) => entry.message === 'tournament created')
+      expect(line).toMatchObject({
+        level: 'info',
+        fields: { tournament: tournament.id, name: 'Log Cup' },
+      })
+      expect(line.seq).toBeGreaterThan(0)
+      expect(Number.isNaN(Date.parse(line.time))).toBe(false)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'includes debug lines, which the server itself is not printing at LOG_LEVEL=silent',
+    async () => {
+      const watcher = await openLogWatcher(true)
+      const tournament = await rest.post<Tournament>('/api/tournaments', { name: 'Debug Cup' })
+
+      await rest.post<Participant>(`/api/tournaments/${tournament.id}/participants`, {
+        name: 'Ann',
+        seed: 1,
+      })
+
+      const line = await watcher.waitForLog((entry) => entry.message === 'participant added')
+      expect(line).toMatchObject({ level: 'debug', fields: { participant: 'Ann' } })
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'sends nothing to a console that unsubscribed, or never asked',
+    async () => {
+      const quiet = await openLogWatcher(false)
+      const stranger = await SpectatorClient.connect(server.url)
+      clients.push(stranger)
+      const watcher = await openLogWatcher(true)
+
+      await rest.post<Tournament>('/api/tournaments', { name: 'Quiet Cup' })
+      await watcher.waitForLog((entry) => entry.fields?.name === 'Quiet Cup')
+
+      expect(quiet.logs()).toEqual([])
+      expect(stranger.logs()).toEqual([])
+    },
+    TEST_TIMEOUT_MS,
+  )
+})

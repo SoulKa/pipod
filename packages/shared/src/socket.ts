@@ -46,6 +46,26 @@ export interface BoardSnapshotPayload {
 export type BoardSnapshotResponse =
   { ok: true; session: BoardSession } | { ok: false; message: string; session?: BoardSession }
 
+/** Severity of a server log line, mirroring the levels the server logger emits. */
+export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+
+/**
+ * One server log line, forwarded live to the console's log terminal. Nothing is stored:
+ * a console only ever sees what the server logs while it is subscribed.
+ */
+export interface LogLine {
+  /** Server-side sequence number — a stable render key that also reveals gaps. */
+  seq: number
+  /** ISO timestamp; the console formats it for display. */
+  time: string
+  level: LogLevel
+  message: string
+  /** Structured fields, already stringified, in the order they were logged. */
+  fields?: Record<string, string>
+  /** Stack trace of the attached error, when the line had one. */
+  stack?: string
+}
+
 /** Full tournament snapshot pushed to subscribers (e.g. the overview screen). */
 export interface TournamentSnapshot {
   tournament: Tournament
@@ -62,6 +82,8 @@ export interface ServerToClientEvents {
   /** Sent after registration so a reconnecting board can restore its full state. */
   'board:session': (session: BoardSession) => void
   'error:message': (message: string) => void
+  /** Live server log line, only sent to clients that asked for them. */
+  'log:line': (line: LogLine) => void
 }
 
 export interface ClientToServerEvents {
@@ -82,6 +104,9 @@ export interface ClientToServerEvents {
     payload: LegResultPayload,
     reply: (response: LegResultResponse) => void,
   ) => void
+  /** Start receiving `log:line` events (the console's log terminal). */
+  'logs:subscribe': () => void
+  'logs:unsubscribe': () => void
 }
 
 export interface InterServerEvents {

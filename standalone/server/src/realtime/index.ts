@@ -8,7 +8,7 @@ import type {
   SocketData,
 } from '@pipod/shared'
 import { boardSnapshotPayloadSchema } from '@pipod/shared'
-import { log } from '../logger'
+import { log, subscribeToLogs } from '../logger'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
 import { maybeAutoAssign } from '../services/scheduler'
@@ -35,12 +35,26 @@ type BoardSocket = Socket<ClientToServerEvents, ServerToClientEvents, never, Soc
 
 let ioServer: IoServer | null = null
 
-export function setupRealtime(io: IoServer): void {
+/** Room of clients watching the server log (the console's log terminal). */
+const LOG_ROOM = 'logs'
+
+/** Wire up all socket handlers. Returns a teardown for the log forwarding subscription. */
+export function setupRealtime(io: IoServer): () => void {
   ioServer = io
   setIo(io)
 
+  const stopLogForwarding = forwardLogsTo(io)
+
   io.on('connection', (socket: BoardSocket) => {
     log.debug({ socket: socket.id }, 'client connected')
+
+    socket.on('logs:subscribe', () => {
+      socket.join(LOG_ROOM)
+    })
+
+    socket.on('logs:unsubscribe', () => {
+      socket.leave(LOG_ROOM)
+    })
 
     socket.on('disconnect', (reason) => {
       const { boardId, floorId, tournamentId } = socket.data
@@ -220,6 +234,21 @@ export function setupRealtime(io: IoServer): void {
         reply?.({ ok: false, message: errorText(err) })
       }
     })
+  })
+
+  return stopLogForwarding
+}
+
+/**
+ * Stream log records to everyone in the log room. Nothing is buffered — a console sees
+ * what the server logs while it is watching, and nothing from before that.
+ */
+function forwardLogsTo(io: IoServer): () => void {
+  let seq = 0
+  return subscribeToLogs((record) => {
+    // Skip the payload work (and the socket.io fan-out) while nobody is watching.
+    if (!io.sockets.adapter.rooms.get(LOG_ROOM)?.size) return
+    io.to(LOG_ROOM).emit('log:line', { seq: ++seq, ...record })
   })
 }
 
