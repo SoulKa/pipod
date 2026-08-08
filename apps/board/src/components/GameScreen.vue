@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import FireworksCanvas from './FireworksCanvas.vue'
 import NumberPad from './NumberPad.vue'
 import PlayerBoard from './PlayerBoard.vue'
 import type { DartThrow, GameOptions, Multiplier, Player } from '../game/useDartGame'
@@ -93,8 +94,10 @@ function confirmNewGame() {
       />
     </section>
 
-    <!-- Result overlay: shown when a player finishes or the game ends -->
+    <!-- Result overlay: shown when a player finishes or the game ends. The celebration
+         runs for as long as the overlay is up, i.e. until a button is pressed. -->
     <div v-if="showBanner" class="overlay">
+      <FireworksCanvas class="fireworks" />
       <div class="modal">
         <template v-if="isGameOver">
           <div class="modal-title">🏆 Spiel vorbei</div>
@@ -217,7 +220,15 @@ h1 {
   z-index: 10;
 }
 
+/* Above the dimmed backdrop so the bursts stay vivid, below the card so the
+   standings and buttons stay readable. */
+.fireworks {
+  z-index: 0;
+}
+
 .modal {
+  position: relative;
+  z-index: 1;
   width: 100%;
   background: linear-gradient(160deg, #1e293b, #0f172a);
   border: 1px solid rgba(148, 163, 184, 0.2);
