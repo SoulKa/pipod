@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { legStarterSeat, type BoardGameSnapshot, type Seat } from '@pipod/shared'
 import GameScreen from './GameScreen.vue'
+import StarterScreen from './StarterScreen.vue'
 import TournamentBar from './TournamentBar.vue'
 import { useDartGame, type Multiplier } from '../game/useDartGame'
 import { useTournamentClient } from '../game/tournamentClient'
@@ -12,6 +14,8 @@ const {
   currentThrows,
   finishOrder,
   bannerIndex,
+  lemonTurns,
+  bigDarts,
   checkoutRoutes,
   isGameOver,
   canUndo,
@@ -32,24 +36,54 @@ const legIndex = ref(0)
 // Server participant ids for the two seats, indexed like `players`.
 const matchIds = ref<[string, string] | null>(null)
 const legsWon = ref<[number, number]>([0, 0])
+// Seat that throws first in leg 0 of the assigned match. Null while nobody has picked,
+// which is what puts the starter screen in front of the game.
+const firstLegStarter = ref<Seat | null>(null)
+// True while a leg report is in flight, so the button can't be tapped twice.
+const reporting = ref(false)
+// Why the last report was refused. Scoped to the report so an older connection
+// message can never masquerade as a failed result.
+const reportError = ref('')
 
 function legsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1
 }
 
+// Seat names in server order, so seat indices stay aligned with `matchIds`.
+const seatNames = computed<[string, string]>(() => {
+  const a = tour.assignment.value
+  if (!a) return ['Spieler A', 'Spieler B']
+  const nameById = new Map(a.participants.map((p) => [p.id, p.name]))
+  return [
+    nameById.get(a.match.participantAId ?? '') ?? 'Spieler A',
+    nameById.get(a.match.participantBId ?? '') ?? 'Spieler B',
+  ]
+})
+
+// A leg that already has darts in it predates the starter choice (an upgrade mid-match,
+// or a snapshot the server seeded before anyone picked). Keep its original seat-0 throw
+// rather than interrupting live play with the starter screen.
+function starterOf(snapshot: BoardGameSnapshot): Seat | null {
+  const stored = snapshot.tournament?.firstLegStarter ?? null
+  if (stored !== null) return stored
+  const untouched =
+    snapshot.history.length === 0 &&
+    snapshot.currentThrows.length === 0 &&
+    snapshot.players.every((player) => player.score === snapshot.options.startScore)
+  return untouched ? null : 0
+}
+
 // Start one leg of the current assigned match using the shared game engine.
 function startLeg() {
   const a = tour.assignment.value
-  if (!a) return
+  const starter = firstLegStarter.value
+  if (!a || starter === null) return
   const m = a.match
-  const nameById = new Map(a.participants.map((p) => [p.id, p.name]))
   startGame({
-    names: [
-      nameById.get(m.participantAId ?? '') ?? 'Spieler A',
-      nameById.get(m.participantBId ?? '') ?? 'Spieler B',
-    ],
+    names: seatNames.value,
     startScore: m.startScore,
     outMode: m.outMode,
+    startIndex: legStarterSeat(starter, legIndex.value),
   })
   syncTournamentState()
 }
@@ -65,6 +99,7 @@ function syncTournamentState() {
       legIndex: legIndex.value,
       legsA: legsWon.value[0],
       legsB: legsWon.value[1],
+      firstLegStarter: firstLegStarter.value,
     }),
   )
 }
@@ -80,12 +115,22 @@ watch(
     tournamentMode.value = true
     const restored = tour.session.value.snapshot
     if (restored?.tournament?.activeMatchId === a.match.id) {
+      firstLegStarter.value = starterOf(restored)
       restoreSnapshot(restored)
     } else {
-      startLeg()
+      // Nothing stored for this match yet — ask who throws first before seeding a leg.
+      firstLegStarter.value = null
     }
   },
 )
+
+// Lock in the choice and play the first leg. Nothing is uploaded until this point, so a
+// board that reloads while the screen is up simply asks again.
+function chooseStarter(seat: Seat) {
+  if (firstLegStarter.value !== null) return
+  firstLegStarter.value = seat
+  startLeg()
+}
 
 const awaitingTournamentMatch = computed(() => !!tour.floorId.value && !tournamentMode.value)
 
@@ -111,26 +156,46 @@ function continuePlaying() {
 watch(
   () => tour.session.value.snapshot,
   (snapshot) => {
-    if (snapshot) restoreSnapshot(snapshot)
+    if (!snapshot) return
+    if (snapshot.tournament?.activeMatchId === tour.assignment.value?.match.id) {
+      firstLegStarter.value = starterOf(snapshot)
+    }
+    restoreSnapshot(snapshot)
   },
 )
 
 // On a finished leg, report the winner; advance to the next leg or end the match.
-function reportLegAndContinue() {
+// The local tally only moves once the server has acknowledged the leg, so a rejected
+// report leaves the board on the result screen and the button available for a retry.
+async function reportLegAndContinue() {
   const ids = matchIds.value
   const winnerSeat = finishOrder.value[0]
-  const bestOf = tour.assignment.value?.match.bestOf ?? 1
-  if (!ids || (winnerSeat !== 0 && winnerSeat !== 1)) return
+  const match = tour.assignment.value?.match
+  if (!ids || !match || (winnerSeat !== 0 && winnerSeat !== 1) || reporting.value) return
 
-  tour.reportLegResult(legIndex.value, ids[winnerSeat])
+  const reportedLeg = legIndex.value
   const tally: [number, number] = [...legsWon.value]
   tally[winnerSeat] += 1
+
+  reporting.value = true
+  reportError.value = ''
+  const result = await tour.reportLegResult(reportedLeg, ids[winnerSeat])
+  reporting.value = false
+  if (!result.ok) {
+    reportError.value = `${result.message} Bitte erneut senden.`
+    return
+  }
+  // Completing a match frees the floor, so the server can assign the next one while we
+  // wait for the ack. From that point the assignment watcher owns the board state.
+  if (tour.assignment.value?.match.id !== match.id) return
+
   legsWon.value = tally
 
-  const need = legsToWin(bestOf)
+  const need = legsToWin(match.bestOf)
   if (tally[0] >= need || tally[1] >= need) {
     tournamentMode.value = false
     matchIds.value = null
+    firstLegStarter.value = null
     tour.clearAssignment()
     backToSetup()
   } else {
@@ -151,6 +216,8 @@ function reportLegAndContinue() {
     </section>
   </template>
 
+  <StarterScreen v-else-if="firstLegStarter === null" :names="seatNames" @select="chooseStarter" />
+
   <GameScreen
     v-else
     :options="options"
@@ -164,20 +231,31 @@ function reportLegAndContinue() {
     :checkout-routes="checkoutRoutes"
     :standings="standings"
     :banner-index="bannerIndex"
+    :lemon-turns="lemonTurns"
+    :big-darts="bigDarts"
     :allow-new-game="false"
     @throw="handleThrow"
     @undo="undo"
     @continue="continuePlaying"
   >
     <template #result-actions>
-      <button v-if="isGameOver" class="primary" @click="reportLegAndContinue">
-        Ergebnis an Server melden →︎
+      <button v-if="isGameOver" class="primary" :disabled="reporting" @click="reportLegAndContinue">
+        {{ reporting ? 'Wird gesendet…' : 'Ergebnis an Server melden →︎' }}
       </button>
+      <p v-if="isGameOver && reportError" class="report-error">{{ reportError }}</p>
     </template>
   </GameScreen>
 </template>
 
 <style scoped>
+.report-error {
+  max-width: 520px;
+  color: #f87171;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .tournament-waiting {
   height: 100%;
   display: flex;

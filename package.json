@@ -25,15 +25,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "yarn type-check && yarn workspace @pipod/board build-only && yarn workspace @pipod/console build-only",
-    "type-check": "yarn workspace @pipod/shared type-check && yarn workspace @pipod/server type-check && yarn workspace @pipod/board type-check && yarn workspace @pipod/console type-check && yarn workspace @pipod/dashboard type-check && yarn workspace @pipod/launcher typecheck",
+    "type-check": "yarn workspace @pipod/shared type-check && yarn workspace @pipod/ui type-check && yarn workspace @pipod/server type-check && yarn workspace @pipod/board type-check && yarn workspace @pipod/console type-check && yarn workspace @pipod/dashboard type-check && yarn workspace @pipod/launcher typecheck",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown"
   },
   "devDependencies": {
+    "@vue/compiler-dom": "3.5.41",
     "@vue/test-utils": "2.4.11",
-    "happy-dom": "20.10.6",
-    "prettier": "3.9.5",
-    "vitest": "4.1.10"
+    "happy-dom": "20.11.2",
+    "prettier": "3.9.6",
+    "vitest": "4.1.10",
+    "vue": "3.5.41"
   },
-  "packageManager": "yarn@4.17.1"
+  "packageManager": "yarn@4.18.0"
 }

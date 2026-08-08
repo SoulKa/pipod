@@ -82,13 +82,25 @@ function validateTurnState(state: z.infer<typeof turnSnapshotSchema>, ctx: z.Ref
 
 export const boardTurnSnapshotSchema = turnSnapshotSchema.superRefine(validateTurnState)
 
+export const seatSchema = z.union([z.literal(0), z.literal(1)])
+
 export const boardTournamentStateSchema = z.object({
   activeMatchId: z.string().min(1),
   participantIds: z.array(z.string().min(1)).length(2),
   legIndex: z.number().int().min(0),
   legsA: z.number().int().min(0),
   legsB: z.number().int().min(0),
+  // Seat that threw first in leg 0 of this match, picked on the board before the
+  // match starts. Null means nobody has chosen yet, which is what makes the board
+  // show its starter screen. Defaulted so sessions persisted before this existed
+  // still parse instead of being dropped mid-match.
+  firstLegStarter: seatSchema.nullable().default(null),
 })
+
+/** Legs alternate the throw: whoever did not start the previous leg starts the next. */
+export function legStarterSeat(firstLegStarter: Seat, legIndex: number): Seat {
+  return ((firstLegStarter + legIndex) % 2) as Seat
+}
 
 /**
  * Complete mutable state of the board engine, including its undo stack and optional
@@ -109,6 +121,7 @@ export const boardSnapshotPayloadSchema = z.object({
 })
 
 export type Multiplier = z.infer<typeof multiplierSchema>
+export type Seat = z.infer<typeof seatSchema>
 export type DartThrow = z.infer<typeof dartThrowSchema>
 export type GameOptions = z.infer<typeof gameOptionsSchema>
 export type BoardPlayer = z.infer<typeof boardPlayerSchema>

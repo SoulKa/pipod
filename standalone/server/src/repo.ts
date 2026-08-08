@@ -6,6 +6,7 @@ import {
   floors,
   groupMembers,
   groups,
+  legs,
   matches,
   participants,
   stages,
@@ -81,6 +82,18 @@ export const repo = {
 
   getMatch(id: string): Match | undefined {
     return db.select().from(matches).where(eq(matches.id, id)).get()
+  },
+
+  listLegs(matchId: string) {
+    return db.select().from(legs).where(eq(legs.matchId, matchId)).orderBy(asc(legs.index)).all()
+  },
+
+  getLeg(matchId: string, index: number) {
+    return db
+      .select()
+      .from(legs)
+      .where(and(eq(legs.matchId, matchId), eq(legs.index, index)))
+      .get()
   },
 
   listGroups(stageId: string) {

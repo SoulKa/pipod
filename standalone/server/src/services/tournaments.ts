@@ -18,7 +18,9 @@ import {
 } from '../db/schema'
 import { repo } from '../repo'
 import { computeStandings, generateRoundRobin, generateSingleElimination } from '../engine'
+import { log } from '../logger'
 import { resolveByes } from './matches'
+import { syncTournamentStatus } from './tournamentStatus'
 
 export function createTournament(name: string): Tournament {
   const row: Tournament = {
@@ -29,6 +31,7 @@ export function createTournament(name: string): Tournament {
     createdAt: new Date().toISOString(),
   }
   db.insert(tournaments).values(row).run()
+  log.info({ tournament: row.id, name }, 'tournament created')
   return row
 }
 
@@ -37,6 +40,7 @@ export function cancelTournament(id: string): Tournament {
   const tournament = repo.getTournament(id)
   if (!tournament) throw new Error('tournament not found')
   db.update(tournaments).set({ status: 'cancelled' }).where(eq(tournaments.id, id)).run()
+  log.warn({ tournament: id, name: tournament.name }, 'tournament cancelled')
   return { ...tournament, status: 'cancelled' }
 }
 
@@ -55,12 +59,14 @@ export function reactivateTournament(id: string): Tournament {
       ? 'completed'
       : 'active'
   db.update(tournaments).set({ status }).where(eq(tournaments.id, id)).run()
+  log.info({ tournament: id, name: tournament.name, status }, 'tournament reactivated')
   return { ...tournament, status }
 }
 
 /** Permanently delete a tournament and every row that hangs off it (no FK cascades). */
 export function deleteTournament(id: string): void {
-  if (!repo.getTournament(id)) throw new Error('tournament not found')
+  const tournament = repo.getTournament(id)
+  if (!tournament) throw new Error('tournament not found')
 
   const matchIds = repo.listMatches(id).map((m) => m.id)
   if (matchIds.length) {
@@ -85,11 +91,18 @@ export function deleteTournament(id: string): void {
   db.delete(floors).where(eq(floors.tournamentId, id)).run()
   db.delete(participants).where(eq(participants.tournamentId, id)).run()
   db.delete(tournaments).where(eq(tournaments.id, id)).run()
+  // Unrecoverable, so it is worth a warn: this is the line that explains a tournament
+  // that "disappeared" from the console.
+  log.warn(
+    { tournament: id, name: tournament.name, matches: matchIds.length },
+    'tournament deleted with all of its data',
+  )
 }
 
 export function createFloor(tournamentId: string, name: string): Floor {
   const row: Floor = { id: nanoid(), tournamentId, name }
   db.insert(floors).values(row).run()
+  log.info({ tournament: tournamentId, floor: name }, 'floor added')
   return row
 }
 
@@ -101,6 +114,7 @@ export function deleteFloor(floorId: string): void {
   }
   db.delete(floorSessions).where(eq(floorSessions.floorId, floorId)).run()
   db.delete(floors).where(eq(floors.id, floorId)).run()
+  log.info({ tournament: floor.tournamentId, floor: floor.name }, 'floor removed')
 }
 
 export function addParticipant(
@@ -110,6 +124,7 @@ export function addParticipant(
 ): Participant {
   const row: Participant = { id: nanoid(), tournamentId, name, seed }
   db.insert(participants).values(row).run()
+  log.debug({ tournament: tournamentId, participant: name, seed }, 'participant added')
   return row
 }
 
@@ -118,10 +133,12 @@ export function updateParticipant(
   patch: Partial<Pick<Participant, 'name' | 'seed'>>,
 ): void {
   db.update(participants).set(patch).where(eq(participants.id, id)).run()
+  log.debug({ participant: id, ...patch }, 'participant updated')
 }
 
 export function deleteParticipant(id: string): void {
   db.delete(participants).where(eq(participants.id, id)).run()
+  log.debug({ participant: id }, 'participant removed')
 }
 
 export function createStage(tournamentId: string, input: CreateStageInput): Stage {
@@ -138,6 +155,10 @@ export function createStage(tournamentId: string, input: CreateStageInput): Stag
     outMode: input.outMode,
   }
   db.insert(stages).values(row).run()
+  log.info(
+    { tournament: tournamentId, stage: row.name, type: row.type, bestOf: row.bestOf },
+    'stage created',
+  )
   return row
 }
 
@@ -244,40 +265,55 @@ export function generateStage(
         })
       }
     })
-    return repo.listStageMatches(stageId)
+  } else {
+    // Knockout: seed from a prior group stage if present, else by participant seed.
+    const priorGroupStage = repo
+      .listStages(stage.tournamentId)
+      .filter((s) => s.type === 'group' && s.order < stage.order)
+      .at(-1)
+
+    const seedIds = priorGroupStage
+      ? qualifiersFromGroupStage(priorGroupStage, opts.qualifiersPerGroup ?? 2)
+      : roster.map((p) => p.id)
+
+    const bracket = generateSingleElimination(seedIds)
+    const idByLocal = new Map(bracket.map((m) => [m.localId, nanoid()] as const))
+
+    for (const m of bracket) {
+      insertMatch(
+        stage,
+        {
+          round: m.round,
+          slot: m.slot,
+          participantAId: m.aId,
+          participantBId: m.bId,
+          status: m.aId && m.bId ? 'ready' : 'pending',
+          nextMatchId: m.nextLocalId ? idByLocal.get(m.nextLocalId)! : null,
+          nextSlot: m.nextSlot,
+        },
+        idByLocal.get(m.localId)!,
+      )
+    }
+
+    resolveByes(stageId)
   }
 
-  // Knockout: seed from a prior group stage if present, else by participant seed.
-  const priorGroupStage = repo
-    .listStages(stage.tournamentId)
-    .filter((s) => s.type === 'group' && s.order < stage.order)
-    .at(-1)
-
-  const seedIds = priorGroupStage
-    ? qualifiersFromGroupStage(priorGroupStage, opts.qualifiersPerGroup ?? 2)
-    : roster.map((p) => p.id)
-
-  const bracket = generateSingleElimination(seedIds)
-  const idByLocal = new Map(bracket.map((m) => [m.localId, nanoid()] as const))
-
-  for (const m of bracket) {
-    insertMatch(
-      stage,
-      {
-        round: m.round,
-        slot: m.slot,
-        participantAId: m.aId,
-        participantBId: m.bId,
-        status: m.aId && m.bId ? 'ready' : 'pending',
-        nextMatchId: m.nextLocalId ? idByLocal.get(m.nextLocalId)! : null,
-        nextSlot: m.nextSlot,
-      },
-      idByLocal.get(m.localId)!,
-    )
-  }
-
-  resolveByes(stageId)
-  return repo.listStageMatches(stageId)
+  // The blanket 'active' above is a starting guess; correct it now that the matches
+  // exist — a bracket settled entirely by byes is already done, and one that had
+  // nothing to schedule never left setup.
+  syncTournamentStatus(stage.tournamentId)
+  const generated = repo.listStageMatches(stageId)
+  log.info(
+    {
+      tournament: stage.tournamentId,
+      stage: stage.name,
+      type: stage.type,
+      players: roster.length,
+      matches: generated.length,
+    },
+    'stage schedule generated',
+  )
+  return generated
 }
 
 /** Insert a match, filling in stage-level defaults. */

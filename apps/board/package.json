@@ -12,18 +12,19 @@
   },
   "dependencies": {
     "@pipod/shared": "*",
+    "@pipod/ui": "*",
     "socket.io-client": "4.8.3",
-    "vue": "^3.5.39"
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.13.3",
-    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
-    "npm-run-all2": "^9.0.2",
-    "typescript": "~6.0.0",
-    "vite": "^8.1.4",
-    "vite-plugin-vue-devtools": "^8.1.5",
-    "vue-tsc": "^3.3.7"
+    "npm-run-all2": "^9.0.3",
+    "typescript": "~6.0.3",
+    "vite": "7.3.6",
+    "vite-plugin-vue-devtools": "^8.2.1",
+    "vue-tsc": "^3.3.9"
   }
 }

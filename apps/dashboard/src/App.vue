@@ -92,6 +92,24 @@ html.dark body {
   background: #0a0a0a;
 }
 
+/* The shared on-screen keyboard (@pipod/ui) defaults to the board's dark palette, which is what
+   this app wants in dark mode; light mode retints it through the same custom properties. */
+html:not(.dark) {
+  --kb-bg: #f8fafc;
+  --kb-border: rgba(15, 23, 42, 0.12);
+  --kb-label-fg: #64748b;
+  --kb-value-fg: #0f172a;
+  --kb-key-bg: #ffffff;
+  --kb-key-bg-active: #e2e8f0;
+  --kb-key-fg: #0f172a;
+  --kb-mod-bg: #cbd5e1;
+  --kb-mod-bg-active: #94a3b8;
+  --kb-mod-fg: #0f172a;
+  --kb-space-bg: #e2e8f0;
+  --kb-space-bg-active: #cbd5e1;
+  --kb-space-fg: #334155;
+}
+
 #app {
   width: 100%;
   height: 100%;

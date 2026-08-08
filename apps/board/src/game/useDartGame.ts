@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import type { BoardGameSnapshot, BoardTournamentState } from '@pipod/shared'
 import { suggestCheckouts, type CheckoutRoute } from './checkout'
+import { isLemonTurn } from './lemon'
 
 export const THROWS_PER_TURN = 3
 
@@ -50,6 +51,11 @@ export function useDartGame() {
   const finishOrder = ref<number[]>([])
   // Index of the player whose finish is currently being announced (drives the overlay).
   const bannerIndex = ref<number | null>(null)
+  // Monotonic tally of "lemon" turns (5+1+20 singles). The UI watches it for increments
+  // to fire the gag, so it is deliberately never reset — a reset would look like an event.
+  const lemonTurns = ref(0)
+  // Same idea for the crowd-pleasing darts: monotonic, watched for increments by the UI.
+  const bigDarts = ref(0)
 
   // Snapshot stack powering undo. Each entry is the full state *before* a throw.
   const history = ref<Snapshot[]>([])
@@ -133,6 +139,14 @@ export function useDartGame() {
 
     currentThrows.value.push({ base, multiplier, points })
 
+    // Checked before the bust/finish branches: the darts were thrown either way, so a
+    // turn that busts on the third dart still earns its lemons.
+    if (isLemonTurn(currentThrows.value)) lemonTurns.value += 1
+    // The two darts worth a cheer: the maximum (T20, 60) and the bull (50).
+    if ((base === 20 && multiplier === 3) || (base === 25 && multiplier === 2)) {
+      bigDarts.value += 1
+    }
+
     // Below zero always busts. In double-out, leaving exactly 1 also busts
     // (you can't check out from 1), as does reaching 0 on a non-double.
     if (newScore < 0 || (doubleOut && newScore === 1)) {
@@ -176,15 +190,18 @@ export function useDartGame() {
     bannerIndex.value = prev.bannerIndex
   }
 
-  // Start a game with the given players (in play order) and options.
-  function startGame(config: { names: string[] } & GameOptions) {
+  // Start a game with the given players (in play order) and options. `startIndex` lets a
+  // caller hand the first throw to someone other than the first seat without reordering
+  // the roster — tournament seats stay aligned with the server's participant ids.
+  function startGame(config: { names: string[]; startIndex?: number } & GameOptions) {
     options.value = { startScore: config.startScore, outMode: config.outMode }
     players.value = config.names.map((name) => ({
       name,
       score: config.startScore,
       lastThrows: [],
     }))
-    currentPlayerIndex.value = 0
+    const startIndex = config.startIndex ?? 0
+    currentPlayerIndex.value = startIndex < players.value.length ? startIndex : 0
     currentThrows.value = []
     finishOrder.value = []
     bannerIndex.value = null
@@ -253,6 +270,8 @@ export function useDartGame() {
     currentThrows,
     finishOrder,
     bannerIndex,
+    lemonTurns,
+    bigDarts,
     currentPlayer,
     isGameOver,
     canUndo,

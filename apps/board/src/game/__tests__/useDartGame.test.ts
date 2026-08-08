@@ -15,6 +15,19 @@ describe('startGame', () => {
     expect(game.players.value.map((p) => p.score)).toEqual([501, 501])
     expect(game.currentPlayerIndex.value).toBe(0)
   })
+
+  it('hands the first throw to startIndex without reordering the roster', () => {
+    const game = useDartGame()
+    game.startGame({ names: ['A', 'B'], startScore: 301, outMode: 'single', startIndex: 1 })
+    expect(game.currentPlayerIndex.value).toBe(1)
+    expect(game.players.value.map((p) => p.name)).toEqual(['A', 'B'])
+  })
+
+  it('falls back to the first seat when startIndex has no player', () => {
+    const game = useDartGame()
+    game.startGame({ names: ['A', 'B'], startScore: 301, outMode: 'single', startIndex: 5 })
+    expect(game.currentPlayerIndex.value).toBe(0)
+  })
 })
 
 describe('scoring a turn', () => {
@@ -117,5 +130,109 @@ describe('checkoutRoutes', () => {
     const game = start(40, 'double')
     game.throwDart(20, 2) // finish → banner up
     expect(game.checkoutRoutes.value).toEqual([])
+  })
+})
+
+describe('lemonTurns', () => {
+  it('starts at zero', () => {
+    const game = start(301, 'single')
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('counts a turn of three singles on 5, 1 and 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    expect(game.lemonTurns.value).toBe(1)
+  })
+
+  it('does not count the same numbers hit with a multiplier', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('does not count an ordinary turn', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(19, 1)
+    game.throwDart(18, 1)
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('counts each occurrence, so a repeat can retrigger the effect', () => {
+    const game = start(301, 'single')
+    for (const player of [0, 1]) {
+      void player
+      game.throwDart(5, 1)
+      game.throwDart(1, 1)
+      game.throwDart(20, 1)
+    }
+    expect(game.lemonTurns.value).toBe(2)
+  })
+
+  it('still counts darts that bust the turn — they were thrown either way', () => {
+    const game = start(10, 'single')
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    game.throwDart(20, 1) // 10 - 26 < 0, so the turn reverts
+    expect(game.players.value[0]!.score).toBe(10)
+    expect(game.lemonTurns.value).toBe(1)
+  })
+})
+
+describe('bigDarts', () => {
+  it('starts at zero', () => {
+    const game = start(301, 'single')
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('counts a triple 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    expect(game.bigDarts.value).toBe(1)
+  })
+
+  it('counts a bull', () => {
+    const game = start(301, 'single')
+    game.throwDart(25, 2)
+    expect(game.bigDarts.value).toBe(1)
+  })
+
+  it('ignores the outer bull, which is only 25', () => {
+    const game = start(301, 'single')
+    game.throwDart(25, 1)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('ignores a single or double 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(20, 2)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('ignores triples of other numbers', () => {
+    const game = start(301, 'single')
+    game.throwDart(19, 3)
+    expect(game.bigDarts.value).toBe(0)
+  })
+
+  it('counts each one, so three in a turn fire three times', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    game.throwDart(25, 2)
+    game.throwDart(20, 3)
+    expect(game.bigDarts.value).toBe(3)
+  })
+
+  it('still counts one that busts the turn', () => {
+    const game = start(40, 'single')
+    game.throwDart(20, 3) // 40 - 60 < 0
+    expect(game.players.value[0]!.score).toBe(40)
+    expect(game.bigDarts.value).toBe(1)
   })
 })

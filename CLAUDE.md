@@ -21,6 +21,9 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
   `WebContentsView`.
 - **`packages/shared`** (`@pipod/shared`) — the contract boundary: domain models, Zod request
   schemas, and typed Socket.IO event maps consumed by all of the above.
+- **`packages/ui`** (`@pipod/ui`) — shared touch-first Vue components: the on-screen keyboard
+  (`VirtualKeyboard`) and the `TouchTextInput` field that opens it. There is no hardware keyboard
+  on the Pi, so **every text input in every app must use `TouchTextInput`**.
 
 ## Commands
 
@@ -58,6 +61,10 @@ type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also ha
 - Every workspace has a vitest suite (board covers the game engine + a component test). For
   UI/behavior not covered by tests, verify by running the relevant `yarn dev:*` and exercising the
   flow in a browser.
+- `standalone/server/src/test/e2e/` boots the real stack (`startServer` on port 0) and drives a
+  whole tournament over real socket.io connections and `/api` calls — the only coverage of the
+  board↔server wire contract, since every other suite mocks one side of it. Add cases there when
+  changing `realtime/`, the socket event maps, or match/floor lifecycle.
 - **Run one command per Bash call.** Chaining with `&&` / `;`, piping into `tail`/`head`, and
   reading exit codes with `echo $?` (or `echo $EXIT`) all trigger manual approval prompts. A
   single command per call runs without approval — e.g. run `yarn test --project board` and
@@ -94,11 +101,18 @@ orchestration in `services/tournaments.ts` persists round-robin groups / knockou
 match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
-built console SPA when `CONSOLE_DIR` is set.
+built console SPA when `CONSOLE_DIR` is set. Logging goes through `src/logger.ts` (plain text
+instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
+`app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
+records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in
+the `logs` room, and a subscriber must never log (it would recurse).
 
 **Console (`standalone/console`).** Its typed REST client calls `/api`; its Socket.IO client
-receives tournament snapshots and live-match updates. In dev, Vite proxies `/api` and `/socket.io`
-to `SERVER_URL` (default `http://localhost:3000`).
+receives tournament snapshots and live-match updates. The shell (`App.vue`) also opens a
+session-long log feed (`serverLogs.ts` → `logs:subscribe`) and renders `LogTerminal.vue` as a
+bottom drawer (topbar button or Ctrl+backtick); the server forwards live lines only, so the
+buffer lives in the tab and filtering by level/text happens client-side. In dev, Vite proxies
+`/api` and `/socket.io` to `SERVER_URL` (default `http://localhost:3000`).
 
 **Launcher (`standalone/launcher`).** `src/renderer` is the Vue home screen (app tiles, store,
 full-screen settings); `src/main` is the Electron main process that installs/updates app bundles
@@ -123,6 +137,12 @@ manifest bundled under `resources/seed`.
   components, dark slate/cyan theme. Comments explain **why**, not what; keep the existing density.
 - Board interactions are touchscreen-first: keep comfortable ~44–48px minimum tap targets and use
   the on-screen keyboard for names. Don't shrink tap targets.
+- Text entry goes through `TouchTextInput` from `@pipod/ui` — never a bare `<input type="text">`.
+  It falls attributes through to the real input, so app-specific classes still apply; because it
+  has a fragment root, parent scoped styles must target it with `:deep()`. Retheme the keyboard
+  through the `--kb-*` custom properties (defaults are the board's dark palette), and reserve room
+  for it in scrollable views with `padding-bottom: var(--pipod-kb-height, …)`. Debounce on a
+  `watch` of the value, not the `input` event — on-screen keys don't fire native input events.
 - Keep board scoring logic pure and UI-agnostic in `apps/board/src/game`; components stay focused
   on presentation and interaction.
 - Cover important functionality with vitest — especially pure logic like the scoring/checkout

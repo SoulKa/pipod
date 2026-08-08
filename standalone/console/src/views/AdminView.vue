@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import type { OutMode, StageType, StartScore, Tournament, TournamentStatus } from '@pipod/shared'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
@@ -64,6 +64,20 @@ async function loadTournaments() {
   tournaments.value = await api.listTournaments()
 }
 loadTournaments()
+
+/**
+ * The rail list is fetched once, but the feed is the live source of truth: a tournament
+ * that finishes (or is cancelled) while it is open must not keep advertising its old
+ * status in the sidebar.
+ */
+watch(
+  () => detail.value?.tournament,
+  (current) => {
+    if (!current) return
+    tournaments.value = tournaments.value.map((t) => (t.id === current.id ? { ...current } : t))
+  },
+  { deep: true },
+)
 
 async function select(id: string) {
   selectedId.value = id
@@ -218,15 +232,8 @@ async function generate(stageId: string, type: StageType) {
         : { qualifiersPerGroup: Number(genOpts.qualifiersPerGroup) },
     )
     await feed.refresh()
-    const currentTournament = detail.value?.tournament
-    if (currentTournament?.status === 'active') {
-      tournaments.value = tournaments.value.map((tournament) =>
-        tournament.id === currentTournament.id
-          ? { ...tournament, status: currentTournament.status }
-          : tournament,
-      )
-      activeTab.value = 'tournament'
-    }
+    // Generating a schedule puts the tournament into play; follow it to the ops tab.
+    if (detail.value?.tournament.status === 'active') activeTab.value = 'tournament'
   })
 }
 
@@ -266,7 +273,9 @@ onUnmounted(() => feed.close())
             @click="select(tournament.id)"
           >
             <span>{{ tournament.name }}</span>
-            <small>{{ statusLabel(tournament.status) }}</small>
+            <small :class="`rail-status--${tournament.status}`">{{
+              statusLabel(tournament.status)
+            }}</small>
           </button>
           <p v-if="!tournaments.length" class="pd-muted rail-empty">
             Erstelle ein Turnier, um zu beginnen.
@@ -282,7 +291,9 @@ onUnmounted(() => feed.close())
             </p>
             <div class="title-row">
               <h2>{{ detail.tournament.name }}</h2>
-              <span class="status">{{ statusLabel(detail.tournament.status) }}</span>
+              <span class="status" :class="`status--${detail.tournament.status}`">
+                {{ statusLabel(detail.tournament.status) }}
+              </span>
             </div>
           </div>
           <div class="heading-actions">
@@ -779,6 +790,29 @@ onUnmounted(() => feed.close())
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* Only the terminal states are coloured; setup and active stay the neutral default.
+   The header badge is a bordered chip, the rail entry is bare text — so it takes the
+   colour alone. */
+.status--completed {
+  border-color: var(--pd-success);
+  background: var(--pd-success-soft);
+}
+
+.status--cancelled {
+  border-color: var(--pd-danger);
+  background: var(--pd-danger-soft);
+}
+
+.status--completed,
+.rail-status--completed {
+  color: var(--pd-success);
+}
+
+.status--cancelled,
+.rail-status--cancelled {
+  color: var(--pd-danger);
 }
 
 .admin-tabs {

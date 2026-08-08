@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { pickClip } from '../effects/celebrationClips'
+import FireworksCanvas from './FireworksCanvas.vue'
+import LemonBurst from './LemonBurst.vue'
 import NumberPad from './NumberPad.vue'
 import PlayerBoard from './PlayerBoard.vue'
+import WowPopup from './WowPopup.vue'
 import type { DartThrow, GameOptions, Multiplier, Player } from '../game/useDartGame'
 import type { CheckoutRoute } from '../game/checkout'
 
@@ -18,9 +22,13 @@ const props = withDefaults(
     checkoutRoutes: CheckoutRoute[]
     standings: Player[]
     bannerIndex: number | null
+    // Running tally of 5+1+20 turns; each increment fires the lemon gag.
+    lemonTurns?: number
+    // Running tally of T20s and bulls; each increment plays a celebration clip.
+    bigDarts?: number
     allowNewGame?: boolean
   }>(),
-  { allowNewGame: true },
+  { allowNewGame: true, lemonTurns: 0, bigDarts: 0 },
 )
 
 const emit = defineEmits<{
@@ -62,6 +70,41 @@ function confirmNewGame() {
   confirmingNewGame.value = false
   emit('new-game')
 }
+
+// The in-play celebrations are non-blocking: they play over the live board and clear
+// themselves, so the turn carries on underneath rather than waiting for a tap like the
+// win overlay does. `choose` runs per occurrence, so what is shown — and for how long —
+// can differ each time.
+function revealsOnTick<T>(tally: () => number, choose: () => { shown: T; durationMs: number }) {
+  const current = shallowRef<T | null>(null)
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  watch(tally, (count, previous) => {
+    if (count <= previous) return
+    const { shown, durationMs } = choose()
+    current.value = shown
+    clearTimeout(timer)
+    timer = setTimeout(() => (current.value = null), durationMs)
+  })
+
+  onBeforeUnmount(() => clearTimeout(timer))
+  return current
+}
+
+// Long enough for LemonBurst's 3s of launches plus the last rocket's climb and fade.
+const showLemons = revealsOnTick(
+  () => props.lemonTurns,
+  () => ({ shown: true, durationMs: 5600 }),
+)
+
+// Each big dart draws a clip at random, and each clip sets its own time on screen.
+const wowClip = revealsOnTick(
+  () => props.bigDarts,
+  () => {
+    const clip = pickClip()
+    return { shown: clip, durationMs: clip.durationMs }
+  },
+)
 </script>
 
 <template>
@@ -93,8 +136,19 @@ function confirmNewGame() {
       />
     </section>
 
-    <!-- Result overlay: shown when a player finishes or the game ends -->
+    <!-- Lemon gag. Keyed so a second 5+1+20 restarts it rather than joining the first
+         burst mid-flight. Sits before the overlays in DOM order, so a lemon that also
+         finishes the leg still renders under the result card. -->
+    <LemonBurst v-if="showLemons" :key="lemonTurns" />
+
+    <!-- Keyed so a second big dart replays from the first frame, even if it draws the
+         same clip again. -->
+    <WowPopup v-if="wowClip" :key="bigDarts" :clip="wowClip" />
+
+    <!-- Result overlay: shown when a player finishes or the game ends. The celebration
+         runs for as long as the overlay is up, i.e. until a button is pressed. -->
     <div v-if="showBanner" class="overlay">
+      <FireworksCanvas class="fireworks" />
       <div class="modal">
         <template v-if="isGameOver">
           <div class="modal-title">🏆 Spiel vorbei</div>
@@ -217,7 +271,15 @@ h1 {
   z-index: 10;
 }
 
+/* Above the dimmed backdrop so the bursts stay vivid, below the card so the
+   standings and buttons stay readable. */
+.fireworks {
+  z-index: 0;
+}
+
 .modal {
+  position: relative;
+  z-index: 1;
   width: 100%;
   background: linear-gradient(160deg, #1e293b, #0f172a);
   border: 1px solid rgba(148, 163, 184, 0.2);

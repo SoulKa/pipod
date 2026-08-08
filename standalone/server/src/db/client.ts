@@ -4,6 +4,7 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { dbPath, env } from '../env'
+import { log } from '../logger'
 import * as schema from './schema'
 
 /**
@@ -19,6 +20,7 @@ function createDb() {
   migrate(db, {
     migrationsFolder: fileURLToPath(new URL('../../drizzle', import.meta.url)),
   })
+  log.info({ path: dbPath }, 'database open, migrations applied')
   return db
 }
 
