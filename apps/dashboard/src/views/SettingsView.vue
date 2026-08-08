@@ -21,7 +21,9 @@ function selectStation(station: StationResult) {
   <div
     class="fixed inset-0 z-10 overflow-y-auto bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white transition-colors duration-700"
   >
-    <div class="mx-auto max-w-2xl px-6 py-8">
+    <!-- Reserve room for the on-screen keyboard so the field being typed into stays scrollable
+         into view (the variable is only set while the keyboard is open). -->
+    <div class="mx-auto max-w-2xl px-6 py-8" style="padding-bottom: var(--pipod-kb-height, 2rem)">
       <header class="flex items-center justify-between mb-8">
         <h1 class="text-2xl font-bold">Settings</h1>
         <button

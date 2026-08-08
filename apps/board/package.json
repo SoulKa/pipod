@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pipod/shared": "*",
+    "@pipod/ui": "*",
     "socket.io-client": "4.8.3",
     "vue": "^3.5.41"
   },

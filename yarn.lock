@@ -1803,6 +1803,7 @@ __metadata:
   resolution: "@pipod/board@workspace:apps/board"
   dependencies:
     "@pipod/shared": "npm:*"
+    "@pipod/ui": "npm:*"
     "@tsconfig/node24": "npm:^24.0.4"
     "@types/node": "npm:^24.13.3"
     "@vitejs/plugin-vue": "npm:^6.0.8"
@@ -1842,6 +1843,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@pipod/dashboard@workspace:apps/dashboard"
   dependencies:
+    "@pipod/ui": "npm:*"
     "@types/node": "npm:24.13.3"
     "@unocss/preset-wind4": "npm:66.7.5"
     "@vitejs/plugin-vue": "npm:6.0.8"
@@ -1910,6 +1912,19 @@ __metadata:
   dependencies:
     typescript: "npm:~6.0.3"
     zod: "npm:4.4.3"
+  languageName: unknown
+  linkType: soft
+
+"@pipod/ui@npm:*, @pipod/ui@workspace:packages/ui":
+  version: 0.0.0-use.local
+  resolution: "@pipod/ui@workspace:packages/ui"
+  dependencies:
+    "@vitejs/plugin-vue": "npm:6.0.8"
+    "@vue/tsconfig": "npm:0.9.1"
+    typescript: "npm:6.0.3"
+    vite: "npm:7.3.6"
+    vue: "npm:3.5.41"
+    vue-tsc: "npm:3.3.9"
   languageName: unknown
   linkType: soft
 

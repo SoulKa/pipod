@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { TouchTextInput } from '@pipod/ui'
 import { DEFAULT_OPTIONS, START_SCORES, type OutMode } from '../game/useDartGame'
 import { loadSetup, saveSetup } from '../game/setupStorage'
-import VirtualKeyboard from './VirtualKeyboard.vue'
 
 const emit = defineEmits<{
   start: [config: { names: string[]; startScore: number; outMode: OutMode }]
@@ -53,22 +53,17 @@ watch(
 )
 
 // Which player's name is being typed on the on-screen keyboard (no HW keyboard on the Pi).
+// Doubles as the open-state for that row's keyboard — only one can be open at a time.
 const editingId = ref<number | null>(null)
-const editingPlayer = computed(() => roster.value.find((p) => p.id === editingId.value) ?? null)
 
-function editName(p: RosterPlayer) {
-  editingId.value = p.id
+function setKeyboardOpen(p: RosterPlayer, isOpen: boolean) {
+  if (isOpen) editingId.value = p.id
+  else if (editingId.value === p.id) editingId.value = null
 }
 
-function setEditingName(value: string) {
-  if (editingPlayer.value) {
-    editingPlayer.value.name = value
-    onName(editingPlayer.value)
-  }
-}
-
-function closeKeyboard() {
-  editingId.value = null
+function setName(p: RosterPlayer, value: string) {
+  p.name = value
+  onName(p)
 }
 
 const selectedPlayers = computed(() => roster.value.filter((p) => p.selected))
@@ -171,9 +166,17 @@ function start() {
           :style="{ '--accent': accent(p.id) }"
         >
           <button class="box" :class="{ ticked: p.selected }" @click="toggle(p)"></button>
-          <button class="name-field" :class="{ empty: !p.name }" @click="editName(p)">
-            {{ p.name || 'Zum Benennen tippen…' }}
-          </button>
+          <TouchTextInput
+            class="name-field"
+            :model-value="p.name"
+            :open="editingId === p.id"
+            :maxlength="12"
+            label="Spielername"
+            placeholder="Zum Benennen tippen…"
+            done-label="Fertig"
+            @update:model-value="setName(p, $event)"
+            @update:open="setKeyboardOpen(p, $event)"
+          />
           <button class="del" :disabled="roster.length <= 1" @click="removePlayer(p.id)">✕︎</button>
         </div>
       </div>
@@ -220,15 +223,6 @@ function start() {
   </div>
 
   <Teleport to="#app">
-    <VirtualKeyboard
-      v-if="editingPlayer"
-      :model-value="editingPlayer.name"
-      :maxlength="12"
-      label="Spielername"
-      @update:model-value="setEditingName"
-      @close="closeKeyboard"
-    />
-
     <div v-if="showOptions" class="options-overlay" @click.self="showOptions = false">
       <div class="options-modal">
         <div class="options-title">Spieloptionen</div>
@@ -409,7 +403,9 @@ h2 {
   font-size: 26px;
 }
 
-.name-field {
+/* The name field is the shared TouchTextInput's <input>, so it sits outside this component's
+   style scope — reach it with :deep(). */
+.player :deep(.name-field) {
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -417,20 +413,22 @@ h2 {
   border: none;
   border-bottom: 2px solid rgba(148, 163, 184, 0.25);
   color: #f1f5f9;
+  font-family: inherit;
   font-size: 26px;
   font-weight: 700;
   padding: 6px 2px;
   cursor: pointer;
+  outline: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.player.editing .name-field {
+.player.editing :deep(.name-field) {
   border-bottom-color: var(--accent);
 }
 
-.name-field.empty {
+.player :deep(.name-field::placeholder) {
   color: #475569;
   font-weight: 600;
 }

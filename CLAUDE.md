@@ -21,6 +21,9 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
   `WebContentsView`.
 - **`packages/shared`** (`@pipod/shared`) — the contract boundary: domain models, Zod request
   schemas, and typed Socket.IO event maps consumed by all of the above.
+- **`packages/ui`** (`@pipod/ui`) — shared touch-first Vue components: the on-screen keyboard
+  (`VirtualKeyboard`) and the `TouchTextInput` field that opens it. There is no hardware keyboard
+  on the Pi, so **every text input in every app must use `TouchTextInput`**.
 
 ## Commands
 
@@ -134,6 +137,12 @@ manifest bundled under `resources/seed`.
   components, dark slate/cyan theme. Comments explain **why**, not what; keep the existing density.
 - Board interactions are touchscreen-first: keep comfortable ~44–48px minimum tap targets and use
   the on-screen keyboard for names. Don't shrink tap targets.
+- Text entry goes through `TouchTextInput` from `@pipod/ui` — never a bare `<input type="text">`.
+  It falls attributes through to the real input, so app-specific classes still apply; because it
+  has a fragment root, parent scoped styles must target it with `:deep()`. Retheme the keyboard
+  through the `--kb-*` custom properties (defaults are the board's dark palette), and reserve room
+  for it in scrollable views with `padding-bottom: var(--pipod-kb-height, …)`. Debounce on a
+  `watch` of the value, not the `input` event — on-screen keys don't fire native input events.
 - Keep board scoring logic pure and UI-agnostic in `apps/board/src/game`; components stay focused
   on presentation and interaction.
 - Cover important functionality with vitest — especially pure logic like the scoring/checkout

@@ -25,7 +25,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "yarn type-check && yarn workspace @pipod/board build-only && yarn workspace @pipod/console build-only",
-    "type-check": "yarn workspace @pipod/shared type-check && yarn workspace @pipod/server type-check && yarn workspace @pipod/board type-check && yarn workspace @pipod/console type-check && yarn workspace @pipod/dashboard type-check && yarn workspace @pipod/launcher typecheck",
+    "type-check": "yarn workspace @pipod/shared type-check && yarn workspace @pipod/ui type-check && yarn workspace @pipod/server type-check && yarn workspace @pipod/board type-check && yarn workspace @pipod/console type-check && yarn workspace @pipod/dashboard type-check && yarn workspace @pipod/launcher typecheck",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown"
   },

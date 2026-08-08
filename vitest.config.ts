@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     projects: [
+      'packages/ui',
       'apps/board',
       'apps/dashboard',
       'standalone/console',
