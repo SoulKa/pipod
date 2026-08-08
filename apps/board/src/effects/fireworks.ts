@@ -40,20 +40,37 @@ export type FireworksState = {
   rockets: Rocket[]
   sparks: Spark[]
   sinceLaunchMs: number
+  sparksPerBurst: number
 }
 
-export function createFireworks(): FireworksState {
-  return { rockets: [], sparks: [], sinceLaunchMs: 0 }
+export type FireworksOptions = {
+  /**
+   * Start with the launch timer already full, so the first rocket goes up on the very
+   * first step instead of after a full interval of empty screen.
+   */
+  primed?: boolean
+  /** Particles per explosion. Lower it when each one is expensive to draw. */
+  sparksPerBurst?: number
+}
+
+export function createFireworks(options: FireworksOptions = {}): FireworksState {
+  return {
+    rockets: [],
+    sparks: [],
+    sinceLaunchMs: options.primed ? LAUNCH_INTERVAL_MS : 0,
+    sparksPerBurst: options.sparksPerBurst ?? SPARKS_PER_BURST,
+  }
 }
 
 /** Explode into a ring of sparks at (x, y). Skipped whole if it would breach the cap. */
 export function burstAt(state: FireworksState, x: number, y: number, rng: () => number): void {
-  if (state.sparks.length + SPARKS_PER_BURST > MAX_SPARKS) return
+  const count = state.sparksPerBurst
+  if (state.sparks.length + count > MAX_SPARKS) return
 
   const color = COLORS[Math.floor(rng() * COLORS.length)] ?? COLORS[0]
-  for (let i = 0; i < SPARKS_PER_BURST; i++) {
+  for (let i = 0; i < count; i++) {
     // Evenly spaced angles with a jittered offset: a round burst, not a visible grid.
-    const angle = ((i + rng()) / SPARKS_PER_BURST) * Math.PI * 2
+    const angle = ((i + rng()) / count) * Math.PI * 2
     const speed = 60 + rng() * 160
     state.sparks.push({
       x,

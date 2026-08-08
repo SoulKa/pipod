@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import FireworksCanvas from './FireworksCanvas.vue'
+import LemonBurst from './LemonBurst.vue'
 import NumberPad from './NumberPad.vue'
 import PlayerBoard from './PlayerBoard.vue'
 import type { DartThrow, GameOptions, Multiplier, Player } from '../game/useDartGame'
@@ -19,9 +20,11 @@ const props = withDefaults(
     checkoutRoutes: CheckoutRoute[]
     standings: Player[]
     bannerIndex: number | null
+    // Running tally of 5+1+20 turns; each increment fires the lemon gag.
+    lemonTurns?: number
     allowNewGame?: boolean
   }>(),
-  { allowNewGame: true },
+  { allowNewGame: true, lemonTurns: 0 },
 )
 
 const emit = defineEmits<{
@@ -63,6 +66,25 @@ function confirmNewGame() {
   confirmingNewGame.value = false
   emit('new-game')
 }
+
+// The lemon gag is non-blocking: it plays over the live board and clears itself, so the
+// turn carries on underneath rather than waiting for a tap like the win overlay does.
+// Long enough for LemonBurst's 3s of launches plus the last rocket's climb and fade.
+const LEMON_DURATION_MS = 5600
+const showLemons = ref(false)
+let lemonTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(
+  () => props.lemonTurns,
+  (count, previous) => {
+    if (count <= previous) return
+    showLemons.value = true
+    clearTimeout(lemonTimer)
+    lemonTimer = setTimeout(() => (showLemons.value = false), LEMON_DURATION_MS)
+  },
+)
+
+onBeforeUnmount(() => clearTimeout(lemonTimer))
 </script>
 
 <template>
@@ -93,6 +115,11 @@ function confirmNewGame() {
         @undo="emit('undo')"
       />
     </section>
+
+    <!-- Lemon gag. Keyed so a second 5+1+20 restarts it rather than joining the first
+         burst mid-flight. Sits before the overlays in DOM order, so a lemon that also
+         finishes the leg still renders under the result card. -->
+    <LemonBurst v-if="showLemons" :key="lemonTurns" />
 
     <!-- Result overlay: shown when a player finishes or the game ends. The celebration
          runs for as long as the overlay is up, i.e. until a button is pressed. -->

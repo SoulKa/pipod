@@ -6,7 +6,8 @@ import { createFireworks, stepFireworks } from '../effects/fireworks'
 const MAX_DPR = 1.5
 
 const canvas = ref<HTMLCanvasElement | null>(null)
-const state = createFireworks()
+// Primed so a rocket is already climbing as the result overlay fades in.
+const state = createFireworks({ primed: true })
 
 let ctx: CanvasRenderingContext2D | null = null
 let frame = 0

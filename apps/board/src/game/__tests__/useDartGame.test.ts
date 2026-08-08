@@ -132,3 +132,54 @@ describe('checkoutRoutes', () => {
     expect(game.checkoutRoutes.value).toEqual([])
   })
 })
+
+describe('lemonTurns', () => {
+  it('starts at zero', () => {
+    const game = start(301, 'single')
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('counts a turn of three singles on 5, 1 and 20', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    expect(game.lemonTurns.value).toBe(1)
+  })
+
+  it('does not count the same numbers hit with a multiplier', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 3)
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('does not count an ordinary turn', () => {
+    const game = start(301, 'single')
+    game.throwDart(20, 1)
+    game.throwDart(19, 1)
+    game.throwDart(18, 1)
+    expect(game.lemonTurns.value).toBe(0)
+  })
+
+  it('counts each occurrence, so a repeat can retrigger the effect', () => {
+    const game = start(301, 'single')
+    for (const player of [0, 1]) {
+      void player
+      game.throwDart(5, 1)
+      game.throwDart(1, 1)
+      game.throwDart(20, 1)
+    }
+    expect(game.lemonTurns.value).toBe(2)
+  })
+
+  it('still counts darts that bust the turn — they were thrown either way', () => {
+    const game = start(10, 'single')
+    game.throwDart(5, 1)
+    game.throwDart(1, 1)
+    game.throwDart(20, 1) // 10 - 26 < 0, so the turn reverts
+    expect(game.players.value[0]!.score).toBe(10)
+    expect(game.lemonTurns.value).toBe(1)
+  })
+})

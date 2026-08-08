@@ -1,7 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import GameScreen from '../GameScreen.vue'
 import FireworksCanvas from '../FireworksCanvas.vue'
+import LemonBurst from '../LemonBurst.vue'
 import { DEFAULT_OPTIONS, type Player } from '../../game/useDartGame'
 
 const players: Player[] = [
@@ -23,6 +25,7 @@ function mountScreen(overrides: Record<string, unknown> = {}) {
       checkoutRoutes: [],
       standings: players,
       bannerIndex: 0,
+      lemonTurns: 0,
       ...overrides,
     },
   })
@@ -47,5 +50,44 @@ describe('GameScreen celebration', () => {
   it('keeps the fireworks from swallowing taps meant for the result buttons', () => {
     const wrapper = mountScreen({ showBanner: true })
     expect(wrapper.findComponent(FireworksCanvas).classes()).toContain('fireworks')
+  })
+})
+
+describe('GameScreen lemons', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('shows nothing while no lemon has been thrown', () => {
+    const wrapper = mountScreen()
+    expect(wrapper.findComponent(LemonBurst).exists()).toBe(false)
+  })
+
+  it('rains lemons when the tally goes up', async () => {
+    const wrapper = mountScreen()
+    await wrapper.setProps({ lemonTurns: 1 })
+    expect(wrapper.findComponent(LemonBurst).exists()).toBe(true)
+  })
+
+  it('clears itself without needing a tap', async () => {
+    const wrapper = mountScreen()
+    await wrapper.setProps({ lemonTurns: 1 })
+
+    // Generous, so the assertion is about clearing itself rather than the exact tuning.
+    vi.advanceTimersByTime(30_000)
+    await nextTick()
+
+    expect(wrapper.findComponent(LemonBurst).exists()).toBe(false)
+  })
+
+  it('restarts for a second lemon instead of staying dismissed', async () => {
+    const wrapper = mountScreen()
+    await wrapper.setProps({ lemonTurns: 1 })
+    // Generous, so the assertion is about clearing itself rather than the exact tuning.
+    vi.advanceTimersByTime(30_000)
+    await nextTick()
+
+    await wrapper.setProps({ lemonTurns: 2 })
+
+    expect(wrapper.findComponent(LemonBurst).exists()).toBe(true)
   })
 })

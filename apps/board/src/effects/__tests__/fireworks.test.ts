@@ -17,6 +17,13 @@ describe('createFireworks', () => {
     expect(state.rockets).toEqual([])
     expect(state.sparks).toEqual([])
   })
+
+  it('can start primed, so the first rocket goes up without a dead beat', () => {
+    const state = createFireworks({ primed: true })
+    stepFireworks(state, 16, 800, 600, rng)
+
+    expect(state.rockets).toHaveLength(1)
+  })
 })
 
 describe('launching', () => {
@@ -93,6 +100,22 @@ describe('bursting', () => {
     expect(state.sparks.some((s) => s.vx < 0)).toBe(true)
     expect(state.sparks.some((s) => s.vy > 0)).toBe(true)
     expect(state.sparks.some((s) => s.vy < 0)).toBe(true)
+  })
+
+  it('uses a smaller burst when configured, for costly-to-draw particles', () => {
+    const state = createFireworks({ sparksPerBurst: 12 })
+    burstAt(state, 100, 200, rng)
+
+    expect(state.sparks).toHaveLength(12)
+  })
+
+  it('applies the configured burst size to rockets that top out on their own', () => {
+    const state = createFireworks({ primed: true, sparksPerBurst: 12 })
+    for (let i = 0; i < 40 && state.sparks.length === 0; i++) {
+      stepFireworks(state, 50, 800, 600, rng)
+    }
+
+    expect(state.sparks).toHaveLength(12)
   })
 
   it('skips bursts that would blow past the spark cap', () => {

@@ -14,6 +14,7 @@ const {
   currentThrows,
   finishOrder,
   bannerIndex,
+  lemonTurns,
   checkoutRoutes,
   isGameOver,
   canUndo,
@@ -229,6 +230,7 @@ async function reportLegAndContinue() {
     :checkout-routes="checkoutRoutes"
     :standings="standings"
     :banner-index="bannerIndex"
+    :lemon-turns="lemonTurns"
     :allow-new-game="false"
     @throw="handleThrow"
     @undo="undo"

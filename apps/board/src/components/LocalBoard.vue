@@ -11,6 +11,7 @@ const {
   currentThrows,
   finishOrder,
   bannerIndex,
+  lemonTurns,
   checkoutRoutes,
   isGameOver,
   canUndo,
@@ -40,6 +41,7 @@ const {
     :checkout-routes="checkoutRoutes"
     :standings="standings"
     :banner-index="bannerIndex"
+    :lemon-turns="lemonTurns"
     @throw="throwDart"
     @undo="undo"
     @continue="continuePlaying"

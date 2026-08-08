@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import type { BoardGameSnapshot, BoardTournamentState } from '@pipod/shared'
 import { suggestCheckouts, type CheckoutRoute } from './checkout'
+import { isLemonTurn } from './lemon'
 
 export const THROWS_PER_TURN = 3
 
@@ -50,6 +51,9 @@ export function useDartGame() {
   const finishOrder = ref<number[]>([])
   // Index of the player whose finish is currently being announced (drives the overlay).
   const bannerIndex = ref<number | null>(null)
+  // Monotonic tally of "lemon" turns (5+1+20 singles). The UI watches it for increments
+  // to fire the gag, so it is deliberately never reset — a reset would look like an event.
+  const lemonTurns = ref(0)
 
   // Snapshot stack powering undo. Each entry is the full state *before* a throw.
   const history = ref<Snapshot[]>([])
@@ -132,6 +136,10 @@ export function useDartGame() {
     const doubleOut = options.value.outMode === 'double'
 
     currentThrows.value.push({ base, multiplier, points })
+
+    // Checked before the bust/finish branches: the darts were thrown either way, so a
+    // turn that busts on the third dart still earns its lemons.
+    if (isLemonTurn(currentThrows.value)) lemonTurns.value += 1
 
     // Below zero always busts. In double-out, leaving exactly 1 also busts
     // (you can't check out from 1), as does reaching 0 on a non-double.
@@ -256,6 +264,7 @@ export function useDartGame() {
     currentThrows,
     finishOrder,
     bannerIndex,
+    lemonTurns,
     currentPlayer,
     isGameOver,
     canUndo,
