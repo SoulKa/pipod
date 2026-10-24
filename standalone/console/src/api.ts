@@ -6,6 +6,7 @@ import type {
   Floor,
   Match,
   Participant,
+  ServerInfo,
   Stage,
   Tournament,
 } from '@pipod/shared'
@@ -47,6 +48,9 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
+  async getInfo(): Promise<ServerInfo> {
+    return json(await fetch('/api/info'))
+  },
   async listTournaments(): Promise<Tournament[]> {
     return json(await fetch('/api/tournaments'))
   },

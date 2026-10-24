@@ -4,6 +4,7 @@ import type { OutMode, StageType, StartScore, Tournament, TournamentStatus } fro
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
 import ScheduleBoard from '../components/ScheduleBoard.vue'
+import ViewerQrButton from '../components/ViewerQrButton.vue'
 
 type AdminTab = 'setup' | 'tournament'
 
@@ -300,6 +301,7 @@ onUnmounted(() => feed.close())
             <RouterLink :to="`/view/${detail.tournament.id}`" target="_blank">
               Übersicht öffnen ↗
             </RouterLink>
+            <ViewerQrButton :path="`/view/${detail.tournament.id}`" />
             <template v-if="detail.tournament.status === 'cancelled'">
               <button @click="reactivateTournament">Reaktivieren</button>
               <button class="pd-button--danger" @click="confirming = 'delete'">Löschen</button>

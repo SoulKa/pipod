@@ -26,6 +26,8 @@ export interface RunningServer {
   io: IoServer
   /** Base URL of the bound address — resolves port 0 to the port actually assigned. */
   url: string
+  /** The port actually bound — the OS's pick when started on port 0. */
+  port: number
   close: () => Promise<void>
 }
 
@@ -50,10 +52,12 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
   const host = opts.host ?? '0.0.0.0'
   await app.listen({ host, port: opts.port ?? 3000 })
 
+  const address = app.server.address()
   return {
     app,
     io,
     url: resolveUrl(app, host),
+    port: address && typeof address !== 'string' ? address.port : (opts.port ?? 3000),
     // Close socket.io first: it holds the open connections that would otherwise keep
     // the HTTP server from shutting down.
     close: async () => {

@@ -3,10 +3,16 @@
 services:
   server:
     build: .
+    # Both host ports reach the same server: 80 for bare-IP links, 3000 for boards (which
+    # default to it). Docker binds 80 on the host, so the server needs no privileges.
     ports:
+      - '80:3000'
       - '3000:3000'
     environment:
       PORT: 3000
+      # The container only sees its own internal address, so links and QR codes need the
+      # host's LAN origin, e.g. `PUBLIC_URL=http://192.168.1.20 docker compose up`.
+      PUBLIC_URL: ${PUBLIC_URL:-}
       HOST: 0.0.0.0
       DATA_DIR: /data
       CONSOLE_DIR: /app/standalone/console/dist

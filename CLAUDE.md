@@ -13,7 +13,8 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
   standalone, or joins a tournament.
 - **`apps/dashboard`** — a kiosk dashboard app (Vue 3, Vite, UnoCSS): weather (Open-Meteo) plus
   Stuttgart VVS transit departures. Pure static SPA, no backend.
-- **`standalone/console`** — Vue Router tournament management/overview app (Vite).
+- **`standalone/console`** — Vue Router tournament management/overview app (Vite). Planned work
+  lives in `docs/tournament-backlog.md`.
 - **`standalone/server`** — Fastify + Socket.IO tournament server on a single port; SQLite via
   Drizzle.
 - **`standalone/launcher`** — Electron shell that runs on the Pi: a home screen of installed-app
@@ -101,7 +102,13 @@ orchestration in `services/tournaments.ts` persists round-robin groups / knockou
 match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
-built console SPA when `CONSOLE_DIR` is set. Logging goes through `src/logger.ts` (plain text
+built console SPA (`CONSOLE_DIR`, defaulting to `standalone/console/dist` when built): `/` is
+the spectator viewer that follows the newest active tournament, `/view/:id` pins one, `/admin` is
+the console. `GET /api/info` returns the origin QR codes link to: `PUBLIC_URL` if set (required
+in Docker, where only the container IP is visible), else the detected LAN IP on the bound port. On
+start it logs the admin link and a terminal QR code for the viewer, and opens `/admin` in the
+browser (`OPEN_BROWSER=0` disables it; off under `NODE_ENV=production` and `yarn dev:server`).
+Logging goes through `src/logger.ts` (plain text
 instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
 `app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
 records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in
