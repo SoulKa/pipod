@@ -5,9 +5,12 @@ services:
     build: .
     # Both host ports reach the same server: 80 for bare-IP links, 3000 for boards (which
     # default to it). Docker binds 80 on the host, so the server needs no privileges.
+    # udp/3000 is LAN discovery; broadcasts often don't reach a bridged container, so boards
+    # may still need the IP typed in (`network_mode: host` fixes that on Linux).
     ports:
       - '80:3000'
       - '3000:3000'
+      - '3000:3000/udp'
     environment:
       PORT: 3000
       # The container only sees its own internal address, so links and QR codes need the

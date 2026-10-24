@@ -1,13 +1,44 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { resolveTournamentParams, updateTournamentParams } from '../appMode'
+import { canDiscover, useServerDiscovery, type FoundServer } from '../game/discovery'
 import { useTournamentClient } from '../game/tournamentClient'
 
+type Step = 'discover' | 'host' | 'tournament' | 'floor'
+
 const client = useTournamentClient()
+const { servers, searching, search } = useServerDiscovery()
 const host = ref('')
-const step = ref<'host' | 'tournament' | 'floor'>('host')
+// Outside the launcher the server list could never work, so it is never shown — and so never
+// ends up in the history either.
+const step = ref<Step>(canDiscover() ? 'discover' : 'host')
+// The screens behind the current one, so Back returns exactly where the user came from.
+const history = ref<Step[]>([])
 const { connected, floorId, tournaments, floors, errorMsg } = client
 const hostLabel = computed(() => host.value || 'Host-IP')
+
+function go(next: Step) {
+  history.value.push(step.value)
+  step.value = next
+}
+function back() {
+  step.value = history.value.pop() ?? step.value
+}
+
+// The server list searches every time it is shown, so it is never stale — also when Back
+// returns to it after a saved IP turned out to be gone.
+watch(
+  step,
+  (current) => {
+    if (current === 'discover') void search()
+  },
+  { immediate: true },
+)
+
+function pickServer(server: FoundServer) {
+  host.value = server.host
+  connect()
+}
 
 function key(value: string) {
   if (value === 'back') host.value = host.value.slice(0, -1)
@@ -24,12 +55,12 @@ function connect() {
     tournamentId: undefined,
     floorId: undefined,
   })
-  step.value = 'tournament'
+  go('tournament')
 }
 async function chooseTournament(id: string) {
   await client.selectTournament(id)
   updateTournamentParams({ tournamentId: id, floorId: undefined })
-  step.value = 'floor'
+  go('floor')
 }
 function chooseFloor(id: string) {
   client.selectFloor(id)
@@ -56,16 +87,32 @@ onMounted(async () => {
   <div v-if="!floorId" class="wizard">
     <section class="card">
       <header>
-        <button
-          v-if="step !== 'host'"
-          class="back"
-          @click="step = step === 'floor' ? 'tournament' : 'host'"
-        >
-          Zurück
-        </button>
+        <button v-if="history.length" class="back" @click="back">Zurück</button>
         <h1>🎯 Turnier beitreten</h1>
       </header>
-      <template v-if="step === 'host'">
+      <template v-if="step === 'discover'">
+        <p>
+          {{
+            servers.length
+              ? 'Turnier-Server auswählen'
+              : searching
+                ? 'Suche Turnier-Server im Netzwerk…'
+                : 'Kein Turnier-Server gefunden'
+          }}
+        </p>
+        <button
+          v-for="server in servers"
+          :key="server.host"
+          class="choice"
+          @click="pickServer(server)"
+        >
+          {{ server.name }}
+          <small>{{ server.host }}</small>
+        </button>
+        <button class="primary" :disabled="searching" @click="search">Erneut suchen</button>
+        <button class="choice manual" @click="go('host')">IP manuell eingeben</button>
+      </template>
+      <template v-else-if="step === 'host'">
         <p>IP des Turnier-Servers eingeben</p>
         <output>{{ hostLabel }}</output>
         <div class="pad">
@@ -168,6 +215,16 @@ onMounted(async () => {
   min-height: 76px;
   text-align: left;
   padding: 20px;
+}
+.choice small {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.manual {
+  text-align: center;
 }
 .back {
   background: transparent;

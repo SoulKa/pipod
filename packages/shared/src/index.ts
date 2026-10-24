@@ -1,3 +1,4 @@
+export * from './discovery'
 export * from './domain'
 export {
   boardGameSnapshotSchema,

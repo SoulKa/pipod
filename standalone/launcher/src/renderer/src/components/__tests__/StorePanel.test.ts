@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import StorePanel from '../StorePanel.vue'
 import type { CatalogEntry } from '../../../../shared/types'
 
@@ -17,7 +17,7 @@ function entry(over: Partial<CatalogEntry> = {}): CatalogEntry {
   }
 }
 
-function mountStore(catalog: CatalogEntry[] = [entry()]) {
+function mountStore(catalog: CatalogEntry[] = [entry()]): VueWrapper {
   return mount(StorePanel, { props: { catalog, progress: {} } })
 }
 

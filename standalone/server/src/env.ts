@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_SERVER_PORT } from '@pipod/shared'
 
 /** The console bundle `yarn build` leaves next to this workspace, if one was built. */
 const builtConsole = fileURLToPath(new URL('../../console/dist', import.meta.url))
@@ -9,7 +10,7 @@ const builtConsole = fileURLToPath(new URL('../../console/dist', import.meta.url
 export const env = {
   /** Bind on all interfaces so boards on the LAN can reach the server. */
   host: process.env.HOST ?? '0.0.0.0',
-  port: Number(process.env.PORT ?? 3000),
+  port: Number(process.env.PORT ?? DEFAULT_SERVER_PORT),
   /**
    * Origin other devices reach the server at, for links and QR codes. Detected from the LAN
    * address when unset — set it when that guess is wrong, e.g. in Docker, where the server

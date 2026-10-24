@@ -102,13 +102,18 @@ orchestration in `services/tournaments.ts` persists round-robin groups / knockou
 match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
-built console SPA (`CONSOLE_DIR`, defaulting to `standalone/console/dist` when built): `/` is
-the spectator viewer that follows the newest active tournament, `/view/:id` pins one, `/admin` is
-the console. `GET /api/info` returns the origin QR codes link to: `PUBLIC_URL` if set (required
-in Docker, where only the container IP is visible), else the detected LAN IP on the bound port. On
-start it logs the admin link and a terminal QR code for the viewer, and opens `/admin` in the
-browser (`OPEN_BROWSER=0` disables it; off under `NODE_ENV=production` and `yarn dev:server`).
-Logging goes through `src/logger.ts` (plain text
+built console SPA (`CONSOLE_DIR`, defaulting to `standalone/console/dist` when built): `/` is the
+spectator viewer that follows the newest active tournament, `/view/:id` pins one, `/admin` is the
+console. `GET /api/info` returns the origin QR codes link to: `PUBLIC_URL` if set (required in
+Docker, where only the container IP is visible), else the detected LAN IP on the bound port. The
+server also answers LAN discovery over UDP on the same port number (`src/discovery.ts`; message
+shapes in `@pipod/shared` `discovery.ts`). A web page can't send UDP, so boards ask the launcher to
+broadcast via `POST /.launcher/discover?port=`, which streams answers back as NDJSON while it
+listens (protocol-agnostic, in `launcher/src/main/discovery.ts`). Boards only offer discovery when
+served over `piapp://` (i.e. by the launcher) and start on manual IP entry otherwise. On start it
+logs the admin link and a terminal QR code for the viewer, and opens `/admin` in the browser
+(`OPEN_BROWSER=0` disables it; off under `NODE_ENV=production` and `yarn dev:server`). Logging goes
+through `src/logger.ts` (plain text
 instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
 `app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
 records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in
