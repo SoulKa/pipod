@@ -52,6 +52,7 @@ onUnmounted(() => {
     <header class="console-topbar">
       <RouterLink class="console-brand" to="/admin">🎯 Pi-Darts Konsole</RouterLink>
       <nav class="console-nav pd-row">
+        <RouterLink to="/">Live</RouterLink>
         <RouterLink to="/admin">Admin</RouterLink>
         <button
           type="button"

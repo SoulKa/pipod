@@ -76,3 +76,13 @@ export const dartSchema = z.object({
   multiplier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
 })
 export type DartInput = z.infer<typeof dartSchema>
+
+/** Response of `GET /api/info`. */
+export interface ServerInfo {
+  /**
+   * Origin other devices on the LAN reach the server at — what QR codes link to, since the
+   * console itself is often opened on `localhost`. `PUBLIC_URL` when set, else the detected
+   * LAN address; null when neither is known.
+   */
+  publicOrigin: string | null
+}

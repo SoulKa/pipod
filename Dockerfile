@@ -35,7 +35,7 @@ ENV NODE_ENV=production \
 # built console bundle.
 COPY --from=build /app /app
 
-EXPOSE 3000
+EXPOSE 3000 3000/udp
 VOLUME ["/data"]
 
 # Run the server with tsx directly from the hoisted bin — no Yarn/npm needed at runtime.

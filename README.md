@@ -69,6 +69,28 @@ self-updates them from the GitHub Release the launcher points at (`GITHUB_OWNER`
 `standalone/launcher/src/main/config.ts`). The UI targets the Pi's portrait touchscreen and
 assumes touch input.
 
+## Running the tournament server
+
+```sh
+yarn build          # builds the console the server hosts
+yarn start:server   # logs the admin link + a viewer QR code, opens /admin in the browser
+```
+
+The server listens on port **3000** (`PORT=…` to change it); links and QR codes always carry the
+port it is on, so spectators just scan or open the shared link. `OPEN_BROWSER=0` skips opening
+the browser.
+
+Boards running in the launcher find the server on their own: the server answers LAN discovery
+broadcasts over UDP on the same port number, and the board lists every server that answered.
+Entering the IP by hand stays available.
+
+- **Windows:** allow node through the firewall prompt on first start (covers TCP and UDP), and
+  make sure the network is set to _Private_, or other devices can't connect.
+- **Docker:** `PUBLIC_URL=http://<host-lan-ip> docker compose up`. The server is reachable on
+  both port 80 and 3000. The container can't see the host's LAN IP, so links and QR codes need
+  `PUBLIC_URL`. Discovery broadcasts often don't reach a bridged container; on Linux,
+  `network_mode: host` fixes that, otherwise boards enter the IP by hand.
+
 ## Requirements
 
 - Node.js `^22.18.0 || >=24.12.0` (see `engines` in `package.json`)

@@ -1,14 +1,15 @@
 import { ref, shallowRef } from 'vue'
 import { io, type Socket } from 'socket.io-client'
-import type {
-  BoardGameSnapshot,
-  BoardSession,
-  ClientToServerEvents,
-  Floor,
-  MatchAssignment,
-  Multiplier,
-  ServerToClientEvents,
-  Tournament,
+import {
+  DEFAULT_SERVER_PORT,
+  type BoardGameSnapshot,
+  type BoardSession,
+  type ClientToServerEvents,
+  type Floor,
+  type MatchAssignment,
+  type Multiplier,
+  type ServerToClientEvents,
+  type Tournament,
 } from '@pipod/shared'
 
 type BoardSocket = Socket<ServerToClientEvents, ClientToServerEvents>
@@ -37,7 +38,7 @@ function normalizeServerUrl(host: string): string {
   const value = host.trim().replace(/\/+$/, '')
   if (!value) return ''
   const url = new URL(/^https?:\/\//i.test(value) ? value : `http://${value}`)
-  if (!url.port) url.port = '3000'
+  if (!url.port) url.port = String(DEFAULT_SERVER_PORT)
   return url.toString().replace(/\/$/, '')
 }
 

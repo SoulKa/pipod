@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import ModalOverlay from '../ModalOverlay.vue'
 
-function mountOverlay(props: { title: string; width?: number } = { title: 'Settings' }) {
+function mountOverlay(
+  props: { title: string; width?: number } = { title: 'Settings' }
+): VueWrapper {
   return mount(ModalOverlay, {
     props,
     slots: {

@@ -12,7 +12,10 @@ import {
   reorderQueueSchema,
   reportLegSchema,
   updateParticipantSchema,
+  type ServerInfo,
 } from '@pipod/shared'
+import { env } from '../env'
+import { publicOrigin } from '../network'
 import { repo } from '../repo'
 import {
   addParticipant,
@@ -40,6 +43,13 @@ const generateOptsSchema = z.object({
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({ ok: true }))
+
+  app.get('/api/info', async (): Promise<ServerInfo> => {
+    // The bound port rather than env.port: tests (and PORT=0) let the OS pick it.
+    const address = app.server.address()
+    if (!address || typeof address === 'string') return { publicOrigin: env.publicUrl || null }
+    return { publicOrigin: publicOrigin(address.port) }
+  })
 
   app.get('/api/tournaments', async () => repo.listTournaments())
 

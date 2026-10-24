@@ -13,7 +13,8 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
   standalone, or joins a tournament.
 - **`apps/dashboard`** — a kiosk dashboard app (Vue 3, Vite, UnoCSS): weather (Open-Meteo) plus
   Stuttgart VVS transit departures. Pure static SPA, no backend.
-- **`standalone/console`** — Vue Router tournament management/overview app (Vite).
+- **`standalone/console`** — Vue Router tournament management/overview app (Vite). Planned work
+  lives in `docs/tournament-backlog.md`.
 - **`standalone/server`** — Fastify + Socket.IO tournament server on a single port; SQLite via
   Drizzle.
 - **`standalone/launcher`** — Electron shell that runs on the Pi: a home screen of installed-app
@@ -38,10 +39,11 @@ yarn dev:server       # Fastify + Socket.IO server
 yarn dev:launcher     # Electron launcher
 yarn type-check       # all workspaces; primary automated gate
 yarn build            # type-check, then build board + console
-yarn build:launcher   # build the Electron launcher (electron-vite + electron-builder)
+yarn build:launcher   # type-check + build the Electron launcher (electron-builder: build:<platform>)
 yarn prepare-seed     # build the board and regenerate the launcher's seed manifest
 yarn test             # run the vitest suites once (board, console, launcher, server)
 yarn test:watch       # vitest in watch mode
+yarn e2e              # build, then run the Playwright e2e suite (only when the user explicitly asks)
 yarn format           # prettier --write
 yarn format:check     # prettier --check
 yarn preview:board / yarn preview:console
@@ -55,9 +57,12 @@ Testing / verification:
 - `yarn test` runs vitest from the root (it **cannot** be run from within a workspace under Yarn
   4). Run a single file with `yarn test <path/to/file.test.ts>`, or a single case with
   `yarn test -t "<test name>"`.
-- For a focused type check use the owning workspace, e.g. `yarn workspace @pipod/server
-type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also has an eslint
-  `lint` script; the other workspaces have no lint script.
+- For a focused type check use the owning workspace, e.g.
+  `yarn workspace @pipod/server type-check`. The root `yarn type-check` runs every workspace's
+  `type-check` script through `yarn workspaces foreach`, so a new workspace only needs to define
+  one. It excludes the root by its package name (`--exclude piPod`), because the root's own
+  `type-check` would otherwise call itself — renaming the root package means updating that flag.
+  The launcher also has an eslint `lint` script; the other workspaces have no lint script.
 - Every workspace has a vitest suite (board covers the game engine + a component test). For
   UI/behavior not covered by tests, verify by running the relevant `yarn dev:*` and exercising the
   flow in a browser.
@@ -65,6 +70,25 @@ type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also ha
   whole tournament over real socket.io connections and `/api` calls — the only coverage of the
   board↔server wire contract, since every other suite mocks one side of it. Add cases there when
   changing `realtime/`, the socket event maps, or match/floor lifecycle.
+- **Never run the Playwright e2e suite (`yarn e2e`, or `playwright test` in any form) on your
+  own initiative — only when the user explicitly asks for it in that request.** It takes over
+  port 3000 (failing if the user's own server runs there), launches Electron windows on their
+  desktop, and needs the sandbox disabled. Verify with `yarn test` and `yarn type-check` instead,
+  and offer to run e2e if a change warrants it.
+- `e2e/` (`@pipod/e2e`) is the Playwright suite over the built stack. `yarn e2e` always runs
+  `e2e:prepare` first: it fetches the Electron binary if missing (Electron downloads it on first
+  use, which would otherwise eat into the first launcher test's timeout) and rebuilds console, seed
+  apps and launcher (~8 s), so it never tests stale bundles; extra arguments go to Playwright
+  (`yarn e2e --project web -g "<name>"`). Playwright starts the server (port 3000 — where boards'
+  discovery looks — with an in-memory DB, serving the built console) and `vite preview` of the
+  board. Project `web` drives console/viewer/board in Chromium (`specs/web`); project `launcher`
+  starts the built Electron launcher with a temporary user-data dir via `fixtures/launcher.ts`
+  (`specs/launcher`), where each app is its own page (`piapp://<id>/…`). Specs share the server, so
+  they name what they create with `uniqueName()` and set up data via `support/api.ts`. On macOS, the
+  first launcher run triggers a Local Network permission prompt for Electron; until it is accepted,
+  broadcasts are silently dropped and the discovery spec fails with an empty server list (the
+  launcher logs `[launcher] discovery:` warnings when sends fail). Linux CI needs no such
+  permission.
 - **Run one command per Bash call.** Chaining with `&&` / `;`, piping into `tail`/`head`, and
   reading exit codes with `echo $?` (or `echo $EXIT`) all trigger manual approval prompts. A
   single command per call runs without approval — e.g. run `yarn test --project board` and
@@ -101,7 +125,18 @@ orchestration in `services/tournaments.ts` persists round-robin groups / knockou
 match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
-built console SPA when `CONSOLE_DIR` is set. Logging goes through `src/logger.ts` (plain text
+built console SPA (`CONSOLE_DIR`, defaulting to `standalone/console/dist` when built): `/` is the
+spectator viewer that follows the newest active tournament, `/view/:id` pins one, `/admin` is the
+console. `GET /api/info` returns the origin QR codes link to: `PUBLIC_URL` if set (required in
+Docker, where only the container IP is visible), else the detected LAN IP on the bound port. The
+server also answers LAN discovery over UDP on the same port number (`src/discovery.ts`; message
+shapes in `@pipod/shared` `discovery.ts`). A web page can't send UDP, so boards ask the launcher to
+broadcast via `POST /.launcher/discover?port=`, which streams answers back as NDJSON while it
+listens (protocol-agnostic, in `launcher/src/main/discovery.ts`). Boards only offer discovery when
+served over `piapp://` (i.e. by the launcher) and start on manual IP entry otherwise. On start it
+logs the admin link and a terminal QR code for the viewer, and opens `/admin` in the browser
+(`OPEN_BROWSER=0` disables it; off under `NODE_ENV=production` and `yarn dev:server`). Logging goes
+through `src/logger.ts` (plain text
 instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
 `app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
 records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in

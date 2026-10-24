@@ -3,13 +3,15 @@
 // so tests can boot the identical stack on an ephemeral port.
 import type { FastifyInstance } from 'fastify'
 import { Server } from 'socket.io'
-import type {
-  ClientToServerEvents,
-  InterServerEvents,
-  ServerToClientEvents,
-  SocketData,
+import {
+  DEFAULT_SERVER_PORT,
+  type ClientToServerEvents,
+  type InterServerEvents,
+  type ServerToClientEvents,
+  type SocketData,
 } from '@pipod/shared'
 import { buildApp } from './app'
+import { startDiscoveryResponder } from './discovery'
 import { setupRealtime } from './realtime'
 import type { IoServer } from './realtime/hub'
 import { syncAllTournamentStatuses } from './services/tournamentStatus'
@@ -26,6 +28,8 @@ export interface RunningServer {
   io: IoServer
   /** Base URL of the bound address — resolves port 0 to the port actually assigned. */
   url: string
+  /** The port actually bound — the OS's pick when started on port 0. */
+  port: number
   close: () => Promise<void>
 }
 
@@ -48,18 +52,25 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
   const stopLogForwarding = setupRealtime(io)
 
   const host = opts.host ?? '0.0.0.0'
-  await app.listen({ host, port: opts.port ?? 3000 })
+  const requested = opts.port ?? DEFAULT_SERVER_PORT
+  await app.listen({ host, port: requested })
+
+  const address = app.server.address()
+  const port = address && typeof address !== 'string' ? address.port : requested
+  const stopDiscovery = await startDiscoveryResponder({ host, port, log: app.log })
 
   return {
     app,
     io,
     url: resolveUrl(app, host),
+    port,
     // Close socket.io first: it holds the open connections that would otherwise keep
     // the HTTP server from shutting down.
     close: async () => {
       // Drop the log subscription too, or a closed server keeps receiving records —
       // the test suite boots a fresh stack per case.
       stopLogForwarding()
+      await stopDiscovery()
       await io.close()
       await app.close()
     },

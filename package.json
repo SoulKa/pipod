@@ -6,7 +6,8 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "standalone/*"
+    "standalone/*",
+    "e2e"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
@@ -24,8 +25,10 @@
     "prepare-seed": "yarn workspace @pipod/board build-only && yarn workspace @pipod/dashboard build-only && OUT_DIR=standalone/launcher/resources/seed node scripts/build-manifest.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e:prepare": "node node_modules/electron/install.js && yarn workspace @pipod/console build-only && yarn prepare-seed && yarn workspace @pipod/launcher build-only",
+    "e2e": "yarn e2e:prepare && yarn workspace @pipod/e2e test",
     "build": "yarn type-check && yarn workspace @pipod/board build-only && yarn workspace @pipod/console build-only",
-    "type-check": "yarn workspace @pipod/shared type-check && yarn workspace @pipod/ui type-check && yarn workspace @pipod/server type-check && yarn workspace @pipod/board type-check && yarn workspace @pipod/console type-check && yarn workspace @pipod/dashboard type-check && yarn workspace @pipod/launcher typecheck",
+    "type-check": "yarn workspaces foreach -A --topological --exclude piPod run type-check",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown"
   },

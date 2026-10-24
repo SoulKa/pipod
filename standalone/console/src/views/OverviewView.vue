@@ -4,6 +4,7 @@ import type { StageType } from '@pipod/shared'
 import { useTournamentFeed } from '../feed'
 import { buildBracketRounds, championOf } from '../bracket'
 import BracketTree from '../components/BracketTree.vue'
+import ViewerQrButton from '../components/ViewerQrButton.vue'
 
 const STAGE_TYPE_LABELS: Record<StageType, string> = {
   group: 'Gruppe',
@@ -11,7 +12,11 @@ const STAGE_TYPE_LABELS: Record<StageType, string> = {
 }
 const stageTypeLabel = (type: StageType) => STAGE_TYPE_LABELS[type] ?? type
 
-const props = defineProps<{ id: string }>()
+const props = defineProps<{
+  id: string
+  /** Where the QR code points; `/` keeps following whichever tournament is active. */
+  qrPath?: string
+}>()
 
 const feed = useTournamentFeed()
 const { detail, standings, live, connected } = feed
@@ -69,6 +74,7 @@ const champion = computed(() => {
           <span class="connection-dot"></span>
           {{ connected ? 'Live-Feed' : 'Offline' }}
         </span>
+        <ViewerQrButton :path="qrPath ?? `/view/${id}`" />
       </div>
     </header>
 
