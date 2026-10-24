@@ -13,19 +13,7 @@ jobs:
     runs-on: ubuntu-latest # quality gates are arch-independent
     steps:
       - uses: actions/checkout@v4
-
-      # Enable Corepack before setup-node so its `cache: yarn` probe resolves the pinned
-      # yarn@4.17.1 instead of the runner's global Yarn 1.x (which rejects the packageManager field).
-      - run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'yarn'
-
-      # Full install — type-check and tests span all workspaces, including the launcher.
-      - name: Install
-        run: yarn install --immutable
+      - uses: ./.github/actions/setup
 
       - name: Format check
         run: yarn format:check
@@ -35,3 +23,29 @@ jobs:
 
       - name: Test
         run: yarn test
+
+  # Playwright over the built stack: console + board in Chromium, and the Electron launcher.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Install Chromium
+        run: yarn workspace @pipod/e2e playwright install --with-deps chromium
+
+      # `yarn e2e` builds the stack (and fetches the Electron binary) first. Electron needs a
+      # display even though nobody watches.
+      - name: E2E
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" yarn e2e
+
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diagnostics
+          path: |
+            e2e/test-results
+            e2e/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

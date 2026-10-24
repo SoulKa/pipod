@@ -39,10 +39,11 @@ yarn dev:server       # Fastify + Socket.IO server
 yarn dev:launcher     # Electron launcher
 yarn type-check       # all workspaces; primary automated gate
 yarn build            # type-check, then build board + console
-yarn build:launcher   # build the Electron launcher (electron-vite + electron-builder)
+yarn build:launcher   # type-check + build the Electron launcher (electron-builder: build:<platform>)
 yarn prepare-seed     # build the board and regenerate the launcher's seed manifest
 yarn test             # run the vitest suites once (board, console, launcher, server)
 yarn test:watch       # vitest in watch mode
+yarn e2e              # build, then run the Playwright e2e suite (only when the user explicitly asks)
 yarn format           # prettier --write
 yarn format:check     # prettier --check
 yarn preview:board / yarn preview:console
@@ -56,9 +57,12 @@ Testing / verification:
 - `yarn test` runs vitest from the root (it **cannot** be run from within a workspace under Yarn
   4). Run a single file with `yarn test <path/to/file.test.ts>`, or a single case with
   `yarn test -t "<test name>"`.
-- For a focused type check use the owning workspace, e.g. `yarn workspace @pipod/server
-type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also has an eslint
-  `lint` script; the other workspaces have no lint script.
+- For a focused type check use the owning workspace, e.g.
+  `yarn workspace @pipod/server type-check`. The root `yarn type-check` runs every workspace's
+  `type-check` script through `yarn workspaces foreach`, so a new workspace only needs to define
+  one. It excludes the root by its package name (`--exclude piPod`), because the root's own
+  `type-check` would otherwise call itself — renaming the root package means updating that flag.
+  The launcher also has an eslint `lint` script; the other workspaces have no lint script.
 - Every workspace has a vitest suite (board covers the game engine + a component test). For
   UI/behavior not covered by tests, verify by running the relevant `yarn dev:*` and exercising the
   flow in a browser.
@@ -66,6 +70,25 @@ type-check`. The **launcher's** script is `typecheck` (no hyphen) and it also ha
   whole tournament over real socket.io connections and `/api` calls — the only coverage of the
   board↔server wire contract, since every other suite mocks one side of it. Add cases there when
   changing `realtime/`, the socket event maps, or match/floor lifecycle.
+- **Never run the Playwright e2e suite (`yarn e2e`, or `playwright test` in any form) on your
+  own initiative — only when the user explicitly asks for it in that request.** It takes over
+  port 3000 (failing if the user's own server runs there), launches Electron windows on their
+  desktop, and needs the sandbox disabled. Verify with `yarn test` and `yarn type-check` instead,
+  and offer to run e2e if a change warrants it.
+- `e2e/` (`@pipod/e2e`) is the Playwright suite over the built stack. `yarn e2e` always runs
+  `e2e:prepare` first: it fetches the Electron binary if missing (Electron downloads it on first
+  use, which would otherwise eat into the first launcher test's timeout) and rebuilds console, seed
+  apps and launcher (~8 s), so it never tests stale bundles; extra arguments go to Playwright
+  (`yarn e2e --project web -g "<name>"`). Playwright starts the server (port 3000 — where boards'
+  discovery looks — with an in-memory DB, serving the built console) and `vite preview` of the
+  board. Project `web` drives console/viewer/board in Chromium (`specs/web`); project `launcher`
+  starts the built Electron launcher with a temporary user-data dir via `fixtures/launcher.ts`
+  (`specs/launcher`), where each app is its own page (`piapp://<id>/…`). Specs share the server, so
+  they name what they create with `uniqueName()` and set up data via `support/api.ts`. On macOS, the
+  first launcher run triggers a Local Network permission prompt for Electron; until it is accepted,
+  broadcasts are silently dropped and the discovery spec fails with an empty server list (the
+  launcher logs `[launcher] discovery:` warnings when sends fail). Linux CI needs no such
+  permission.
 - **Run one command per Bash call.** Chaining with `&&` / `;`, piping into `tail`/`head`, and
   reading exit codes with `echo $?` (or `echo $EXIT`) all trigger manual approval prompts. A
   single command per call runs without approval — e.g. run `yarn test --project board` and

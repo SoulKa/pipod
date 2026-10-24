@@ -1,0 +1,22 @@
+name: setup
+description: Node 24 + the pinned Yarn via Corepack, then a full immutable install of every workspace.
+
+# Shared by every workflow job. Expects the repository to be checked out already: a local action
+# can only be used from a checkout.
+runs:
+  using: composite
+  steps:
+    # Enable Corepack before setup-node so its `cache: yarn` probe resolves the pinned Yarn from
+    # `packageManager` instead of the runner's global Yarn 1.x (which rejects that field).
+    - run: corepack enable
+      shell: bash
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        cache: 'yarn'
+
+    # Full install: type-check, tests, e2e and the launcher build all span every workspace.
+    - name: Install
+      run: yarn install --immutable
+      shell: bash

@@ -20,6 +20,11 @@ export interface BroadcastOptions {
   targets?: string[]
 }
 
+/** One greppable prefix for every discovery problem (CLAUDE.md points people at it). */
+function warn(...args: unknown[]): void {
+  console.warn('[launcher] discovery:', ...args)
+}
+
 /**
  * Broadcast a datagram on the LAN and report every answer the moment it arrives, until the
  * wait is over or `signal` aborts. Resolves once listening has stopped.
@@ -47,16 +52,21 @@ export async function broadcastAndListen(opts: BroadcastOptions): Promise<void> 
         resolve()
       })
     })
-  } catch {
+  } catch (err) {
     // No socket, no scan: report nothing so the app falls back to manual entry.
+    warn('cannot open a UDP socket:', err)
     socket.close()
     return
   }
-  // Send failures (an interface going down mid-scan) only mean fewer answers.
-  socket.on('error', () => {})
+  socket.on('error', (err) => warn('socket error:', err))
   socket.setBroadcast(true)
   for (const target of opts.targets ?? broadcastAddresses()) {
-    socket.send(opts.payload, opts.port, target, () => {})
+    // A failed send only means fewer answers, but it is logged: an empty server list looks the
+    // same whether nobody answered or the broadcast never left (e.g. macOS denying the app
+    // Local Network access), and only this log tells the two apart.
+    socket.send(opts.payload, opts.port, target, (err) => {
+      if (err) warn(`broadcast to ${target}:${opts.port} failed:`, err)
+    })
   }
 
   await new Promise<void>((resolve) => {

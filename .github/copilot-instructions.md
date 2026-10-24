@@ -33,8 +33,8 @@ Automated tests run under vitest (`yarn test` from the repo root — cannot be r
 workspace under Yarn 4). For a focused check, run the owning workspace's type check, for
 example `yarn workspace @pipod/board type-check`, `yarn workspace @pipod/console
 type-check`, `yarn workspace @pipod/server type-check`, or `yarn workspace @pipod/shared
-type-check`. The launcher's script is named `typecheck` (no hyphen):
-`yarn workspace @pipod/launcher typecheck`, and it also has an eslint `lint` script.
+type-check`. The launcher also has an eslint `lint` script. The root `yarn type-check` runs
+every workspace's `type-check` script, so a new workspace only needs to define one.
 
 ## Architecture
 

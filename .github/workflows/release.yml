@@ -19,20 +19,9 @@ jobs:
     runs-on: ubuntu-24.04-arm # native arm64 → electron-builder emits arm64 launcher artifacts
     steps:
       - uses: actions/checkout@v4
-
-      # Enable Corepack before setup-node so its `cache: yarn` probe resolves the pinned
-      # yarn@4.17.1 instead of the runner's global Yarn 1.x (which rejects the packageManager field).
-      - run: corepack enable
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'yarn'
-
       # Full install — the launcher build needs the whole toolchain (electron, electron-builder,
       # the allow-listed electron/node-gyp git dep) alongside @pipod/shared and the store apps.
-      - name: Install
-        run: yarn install --immutable
+      - uses: ./.github/actions/setup
 
       # v1.4.0 -> 1.4.0 ; stamps the launcher installer version without committing a bump.
       - name: Derive version from tag
