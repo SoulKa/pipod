@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
-import type { OutMode, StageType, StartScore, Tournament, TournamentStatus } from '@pipod/shared'
+import type { Tournament, TournamentStatus } from '@pipod/shared'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
+import { usePhaseForm } from '../phaseForm'
+import { outModeLabel, phaseLabel } from '../phases'
+import PhaseCard from '../components/PhaseCard.vue'
 import ScheduleBoard from '../components/ScheduleBoard.vue'
 import ViewerQrButton from '../components/ViewerQrButton.vue'
 
@@ -16,18 +19,6 @@ const STATUS_LABELS: Record<TournamentStatus, string> = {
 }
 const statusLabel = (status: TournamentStatus) => STATUS_LABELS[status] ?? status
 
-const STAGE_TYPE_LABELS: Record<StageType, string> = {
-  group: 'Gruppe',
-  knockout: 'K.-o.',
-}
-const stageTypeLabel = (type: StageType) => STAGE_TYPE_LABELS[type] ?? type
-
-const OUT_MODE_LABELS: Record<OutMode, string> = {
-  single: 'Single-Out',
-  double: 'Double-Out',
-}
-const outModeLabel = (mode: OutMode) => OUT_MODE_LABELS[mode] ?? mode
-
 const tournaments = ref<Tournament[]>([])
 const feed = useTournamentFeed()
 const { detail, live } = feed
@@ -39,14 +30,14 @@ const confirming = ref<null | 'cancel' | 'delete'>(null)
 const newTournamentName = ref('')
 const newFloorName = ref('')
 const newParticipant = reactive({ name: '', seed: '' })
-const newStage = reactive({
-  name: '',
-  type: 'group' as StageType,
-  bestOf: 3,
-  startScore: 501 as StartScore,
-  outMode: 'double' as OutMode,
-})
-const genOpts = reactive({ groupCount: 2, qualifiersPerGroup: 2 })
+const COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
+const {
+  form: phaseForm,
+  input: phasesInput,
+  setupError,
+  startBlocker,
+  locked: phasesLocked,
+} = usePhaseForm(detail)
 
 function defaultTab(status: TournamentStatus): AdminTab {
   return status === 'setup' ? 'setup' : 'tournament'
@@ -207,33 +198,22 @@ async function removeParticipant(id: string) {
   })
 }
 
-async function createStage() {
+async function savePhases() {
   const tournamentId = selectedId.value
   if (!tournamentId) return
   await run(async () => {
-    await api.createStage(tournamentId, {
-      name: newStage.name.trim(),
-      type: newStage.type,
-      format: newStage.type === 'group' ? 'round_robin' : 'single_elimination',
-      bestOf: Number(newStage.bestOf),
-      startScore: newStage.startScore,
-      outMode: newStage.outMode,
-    })
-    newStage.name = ''
+    await api.configurePhases(tournamentId, phasesInput.value)
     await feed.refresh()
   })
 }
 
-async function generate(stageId: string, type: StageType) {
+async function startTournament() {
+  const tournamentId = selectedId.value
+  if (!tournamentId) return
   await run(async () => {
-    await api.generateStage(
-      stageId,
-      type === 'group'
-        ? { groupCount: Number(genOpts.groupCount) }
-        : { qualifiersPerGroup: Number(genOpts.qualifiersPerGroup) },
-    )
+    // Starts with what the form shows, saved in the same step.
+    await api.startTournament(tournamentId, phasesInput.value)
     await feed.refresh()
-    // Generating a schedule puts the tournament into play; follow it to the ops tab.
     if (detail.value?.tournament.status === 'active') activeTab.value = 'tournament'
   })
 }
@@ -348,7 +328,7 @@ onUnmounted(() => feed.close())
               <h2>Spielreihenfolge aufbauen</h2>
             </div>
             <p class="pd-muted">
-              Teilnehmer hinzufügen, Boards vorbereiten, dann Phasen erstellen und generieren.
+              Teilnehmer hinzufügen, Boards vorbereiten, Phasen wählen, dann das Turnier starten.
             </p>
           </header>
 
@@ -378,7 +358,7 @@ onUnmounted(() => feed.close())
               </li>
             </ul>
             <p v-else class="pd-muted">
-              Alle Spieler hinzufügen, bevor die erste Phase generiert wird.
+              Alle Spieler hinzufügen, bevor das Turnier gestartet wird.
             </p>
             <div class="player-create">
               <input
@@ -427,77 +407,88 @@ onUnmounted(() => feed.close())
               <span class="step-number">3</span>
               <div>
                 <p class="eyebrow">Format</p>
-                <h3>Phase erstellen</h3>
+                <h3>Phasen</h3>
               </div>
             </div>
-            <div class="stage-form">
-              <input v-model="newStage.name" placeholder="Phasenname (z. B. Gruppen)" />
-              <select v-model="newStage.type" aria-label="Phasentyp">
-                <option value="group">Gruppe (Jeder gegen jeden)</option>
-                <option value="knockout">K.-o. (einfaches Ausscheiden)</option>
-              </select>
-              <label>
-                <span>Best of</span>
-                <input v-model="newStage.bestOf" aria-label="Best of" />
-              </label>
-              <select v-model="newStage.startScore" aria-label="Startpunktzahl">
-                <option :value="301">301</option>
-                <option :value="501">501</option>
-              </select>
-              <select v-model="newStage.outMode" aria-label="Checkout-Modus">
-                <option value="single">Single-Out</option>
-                <option value="double">Double-Out</option>
-              </select>
-              <button :disabled="!newStage.name.trim()" @click="createStage">
-                Phase hinzufügen
-              </button>
+            <p class="pd-muted">
+              {{
+                phasesLocked
+                  ? 'Das Turnier läuft — die Phasen stehen fest.'
+                  : 'Erst die Gruppenphase, dann die K.-o.-Phase. Mindestens eine muss aktiv sein.'
+              }}
+            </p>
+            <div class="phase-list">
+              <PhaseCard
+                v-model:enabled="phaseForm.group.enabled"
+                v-model:rules="phaseForm.group.rules"
+                phase="group"
+                description="Jeder gegen jeden"
+                :disabled="phasesLocked"
+              >
+                <label>
+                  <span>Gruppen</span>
+                  <select
+                    v-model.number="phaseForm.group.groupCount"
+                    aria-label="Anzahl der Gruppen"
+                    :disabled="phasesLocked"
+                  >
+                    <option v-for="n in COUNT_OPTIONS" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </label>
+              </PhaseCard>
+              <PhaseCard
+                v-model:enabled="phaseForm.knockout.enabled"
+                v-model:rules="phaseForm.knockout.rules"
+                phase="knockout"
+                :description="
+                  phaseForm.group.enabled
+                    ? 'Wird nach der Gruppenphase aus der Tabelle ausgelost'
+                    : 'Einfaches Ausscheiden nach Setzliste'
+                "
+                :disabled="phasesLocked"
+              >
+                <label v-if="phaseForm.group.enabled">
+                  <span>Weiter / Gruppe</span>
+                  <select
+                    v-model.number="phaseForm.knockout.qualifiersPerGroup"
+                    aria-label="Qualifikanten pro Gruppe"
+                    :disabled="phasesLocked"
+                  >
+                    <option v-for="n in COUNT_OPTIONS" :key="n" :value="n">{{ n }}</option>
+                  </select>
+                </label>
+              </PhaseCard>
+            </div>
+            <p v-if="!phasesLocked && setupError" class="pd-muted">{{ setupError }}</p>
+            <div v-if="!phasesLocked" class="phase-actions">
+              <button :disabled="!!setupError" @click="savePhases">Phasen speichern</button>
             </div>
           </section>
 
-          <section class="schedule-step">
-            <div class="workflow-heading">
+          <section class="pd-panel setup-step">
+            <div class="step-heading">
+              <span class="step-number">4</span>
               <div>
                 <p class="eyebrow">Zeitplan</p>
-                <h2>Phasen generieren</h2>
-              </div>
-              <div class="generation-options pd-muted">
-                <label
-                  >Gruppen <input v-model="genOpts.groupCount" aria-label="Anzahl der Gruppen"
-                /></label>
-                <label>
-                  Qualifikanten / Gruppe
-                  <input
-                    v-model="genOpts.qualifiersPerGroup"
-                    aria-label="Qualifikanten pro Gruppe"
-                  />
-                </label>
+                <h3>Turnier starten</h3>
               </div>
             </div>
-            <div v-if="stagesWithMatches.length" class="setup-stage-list">
-              <article
-                v-for="{ stage, matches } in stagesWithMatches"
-                :key="stage.id"
-                class="pd-panel pd-panel--compact setup-stage-card"
+            <p class="pd-muted">
+              {{
+                startBlocker ??
+                (phaseForm.group.enabled
+                  ? 'Lost die Gruppen aus; die K.-o.-Phase folgt automatisch.'
+                  : 'Lost den K.-o.-Baum nach Setzliste aus.')
+              }}
+            </p>
+            <div class="phase-actions">
+              <button
+                class="pd-button--primary"
+                :disabled="!!startBlocker"
+                @click="startTournament"
               >
-                <div>
-                  <h3>{{ stage.name }}</h3>
-                  <p class="pd-muted">
-                    {{ stageTypeLabel(stage.type) }} · Bo{{ stage.bestOf }} ·
-                    {{ stage.startScore }} ·
-                    {{ outModeLabel(stage.outMode) }}
-                  </p>
-                </div>
-                <button
-                  class="pd-button--primary"
-                  :disabled="matches.length > 0"
-                  @click="generate(stage.id, stage.type)"
-                >
-                  {{ matches.length ? `${matches.length} Matches generiert` : 'Phase generieren' }}
-                </button>
-              </article>
-            </div>
-            <div v-else class="pd-panel pd-panel--compact empty-stages">
-              <p class="pd-muted">Füge eine Phase hinzu, um den Turnierplan aufzubauen.</p>
+                Turnier starten
+              </button>
             </div>
           </section>
         </section>
@@ -585,8 +576,11 @@ onUnmounted(() => feed.close())
               >
                 <div class="progress-card-heading">
                   <div>
-                    <h3>{{ stage.name }}</h3>
-                    <p class="pd-muted">{{ stageTypeLabel(stage.type) }} · Bo{{ stage.bestOf }}</p>
+                    <h3>{{ phaseLabel(stage.type) }}</h3>
+                    <p class="pd-muted">
+                      Bo{{ stage.bestOf }} · {{ stage.startScore }} ·
+                      {{ outModeLabel(stage.outMode) }}
+                    </p>
                   </div>
                   <span>{{ completed }}/{{ matches.length || '—' }}</span>
                 </div>
@@ -597,20 +591,16 @@ onUnmounted(() => feed.close())
                   {{
                     matches.length
                       ? `${ready} bereit · ${liveCount} live · ${completed} abgeschlossen`
-                      : 'Wartet auf Generierung'
+                      : stage.type === 'knockout'
+                        ? 'Wird nach der Gruppenphase ausgelost'
+                        : 'Wartet auf den Turnierstart'
                   }}
                 </p>
-                <button
-                  v-if="!matches.length && detail.tournament.status !== 'completed'"
-                  @click="generate(stage.id, stage.type)"
-                >
-                  {{ stage.name }} generieren
-                </button>
               </article>
             </div>
             <div v-else class="pd-panel pd-panel--compact empty-stages">
               <p class="pd-muted">
-                Es wurden noch keine Phasen erstellt. Wechsle zu „Einrichtung“, um die Auslosung
+                Es wurden noch keine Phasen gewählt. Wechsle zu „Einrichtung“, um die Auslosung
                 vorzubereiten.
               </p>
             </div>
@@ -655,7 +645,6 @@ onUnmounted(() => feed.close())
 .admin-workbench,
 .setup-workflow,
 .tournament-workspace,
-.schedule-step,
 .operations-surface,
 .stage-progress {
   display: grid;
@@ -927,63 +916,22 @@ onUnmounted(() => feed.close())
   color: var(--pd-danger);
 }
 
-.stage-form {
+.phase-list {
   display: grid;
-  grid-template-columns: minmax(10rem, 1.7fr) minmax(9rem, 1.4fr) minmax(5rem, 0.7fr);
-  gap: var(--pd-space-2);
-}
-
-.stage-form select,
-.stage-form button {
-  min-width: 0;
-}
-
-.stage-form label,
-.generation-options label,
-.floor-select {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--pd-space-2);
-  color: var(--pd-text-muted);
-}
-
-.stage-form label input,
-.generation-options input {
-  width: 100%;
-  min-width: 0;
-}
-
-.generation-options {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   gap: var(--pd-space-3);
 }
 
-.generation-options label {
-  flex: 1 1 10rem;
+.phase-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
-.setup-stage-list,
 .stage-progress-list {
   display: grid;
   gap: var(--pd-space-3);
 }
 
-.setup-stage-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pd-space-4);
-}
-
-.setup-stage-card > div {
-  display: grid;
-  gap: var(--pd-space-1);
-}
-
-.setup-stage-card p,
 .completed-summary p,
 .progress-card p,
 .status-panel p {
@@ -1243,8 +1191,7 @@ onUnmounted(() => feed.close())
   .workbench-heading,
   .workflow-heading,
   .operations-heading,
-  .completed-summary,
-  .setup-stage-card {
+  .completed-summary {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -1253,7 +1200,6 @@ onUnmounted(() => feed.close())
     text-align: left;
   }
 
-  .stage-form,
   .secondary-status {
     grid-template-columns: 1fr;
   }
@@ -1264,12 +1210,6 @@ onUnmounted(() => feed.close())
 
   .player-create input:first-child {
     grid-column: 1 / -1;
-  }
-
-  .generation-options {
-    display: grid;
-    width: 100%;
-    grid-template-columns: 1fr;
   }
 
   .admin-tabs {

@@ -58,13 +58,11 @@ function detail(over: Partial<TournamentDetail> = {}): TournamentDetail {
       {
         id: 's1',
         tournamentId: 't1',
-        name: 'Group A',
         type: 'group',
-        format: 'round_robin',
-        order: 0,
         bestOf: 3,
         startScore: 501,
         outMode: 'double',
+        groupCount: 1,
       },
     ],
     matches: [

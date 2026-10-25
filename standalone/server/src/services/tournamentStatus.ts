@@ -10,6 +10,20 @@ import { log } from '../logger'
 import { repo } from '../repo'
 
 /**
+ * What a tournament's matches say its status is: no matches → still in setup; every
+ * phase drawn and every match done → completed; otherwise active. A knockout phase
+ * that is still waiting on the group phase keeps a fully played group phase active.
+ */
+export function deriveTournamentStatus(tournamentId: string): TournamentStatus {
+  const matchList = repo.listMatches(tournamentId)
+  if (!matchList.length) return 'setup'
+  const undrawn = repo
+    .listStages(tournamentId)
+    .some((stage) => !matchList.some((m) => m.stageId === stage.id))
+  return !undrawn && matchList.every((m) => m.status === 'completed') ? 'completed' : 'active'
+}
+
+/**
  * Re-derive and persist a tournament's status. Returns the updated tournament, or
  * null when nothing changed, so callers can skip a redundant broadcast.
  *
@@ -22,13 +36,7 @@ export function syncTournamentStatus(tournamentId: string): Tournament | null {
   if (!tournament) throw new Error('tournament not found')
   if (tournament.status === 'cancelled') return null
 
-  const matchList = repo.listMatches(tournamentId)
-  const status: TournamentStatus = !matchList.length
-    ? 'setup'
-    : matchList.every((m) => m.status === 'completed')
-      ? 'completed'
-      : 'active'
-
+  const status = deriveTournamentStatus(tournamentId)
   if (status === tournament.status) return null
   db.update(tournaments).set({ status }).where(eq(tournaments.id, tournamentId)).run()
   log.info(

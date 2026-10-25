@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { reactive, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import type { LogLine } from '@pipod/shared'
 
@@ -11,6 +11,14 @@ const clear = vi.fn()
 // The shell owns the log feed's lifecycle; stub it so the drawer can be driven directly.
 vi.mock('./serverLogs', () => ({
   useServerLogs: () => ({ lines, connected: ref(true), start, stop, clear }),
+}))
+
+// The shell picks its layout from the current route; a console page unless a test says
+// otherwise.
+const route = reactive({ matched: [{}], meta: {} as { bare?: boolean } })
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => route,
 }))
 
 import App from './App.vue'
@@ -25,6 +33,33 @@ function render(buffered: LogLine[] = []) {
 }
 
 describe('App', () => {
+  beforeEach(() => {
+    route.meta = {}
+    start.mockClear()
+  })
+
+  it('renders a spectator route without the shell and never opens the log feed', () => {
+    route.meta = { bare: true }
+    const wrapper = render()
+
+    expect(wrapper.find('.console-topbar').exists()).toBe(false)
+    expect(wrapper.find('.console-content').exists()).toBe(true)
+    expect(start).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('starts the log feed once the operator moves from a viewer to a console page', async () => {
+    route.meta = { bare: true }
+    const wrapper = render()
+
+    route.meta = {}
+    await wrapper.vm.$nextTick()
+
+    expect(start).toHaveBeenCalled()
+    expect(wrapper.find('.console-topbar').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('starts the log feed on mount, before the terminal is ever opened', () => {
     const wrapper = render()
 

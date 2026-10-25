@@ -15,11 +15,15 @@ export type StartScore = (typeof START_SCORES)[number]
 
 export type TournamentStatus = 'setup' | 'active' | 'completed' | 'cancelled'
 
-/** A stage is either a round-robin group phase or a knockout bracket. */
+/**
+ * A tournament has at most these two phases, always played in this order: a round-robin
+ * group phase, then a single-elimination knockout bracket. Each is optional, but at
+ * least one is on.
+ */
 export type StageType = 'group' | 'knockout'
 
-/** How matches within a stage are structured. */
-export type StageFormat = 'round_robin' | 'single_elimination' | 'double_elimination'
+/** Play order of the phases; a phase never starts before every earlier one is finished. */
+export const STAGE_TYPES: readonly StageType[] = ['group', 'knockout']
 
 /**
  * pending  – waiting on participants (e.g. an unfilled bracket slot)
@@ -57,19 +61,30 @@ export interface Floor {
   name: string
 }
 
-export interface Stage {
+/** Rules shared by every phase; each match copies them when it is drawn. */
+interface StageBase {
   id: string
   tournamentId: string
-  name: string
-  type: StageType
-  format: StageFormat
-  /** Play order of stages within a tournament (0-based). */
-  order: number
   /** Default match length for this stage (legs to win = ceil(bestOf/2)). */
   bestOf: number
-  startScore: number
+  startScore: StartScore
   outMode: OutMode
 }
+
+export interface GroupStage extends StageBase {
+  type: 'group'
+  /** How many round-robin groups participants are split across. */
+  groupCount: number
+}
+
+export interface KnockoutStage extends StageBase {
+  type: 'knockout'
+  /** How many advance from each group; null when there is no group phase to cut. */
+  qualifiersPerGroup: number | null
+}
+
+/** One phase of a tournament. Its name and play order follow from `type`. */
+export type Stage = GroupStage | KnockoutStage
 
 export interface Group {
   id: string

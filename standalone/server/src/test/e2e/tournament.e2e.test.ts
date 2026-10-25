@@ -2,7 +2,15 @@
 // real websocket clients. The unit suites mock io on the server side and mock the
 // socket on the board side, so nothing else proves the two halves actually talk.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { Floor, Match, MatchAssignment, Participant, Stage, Tournament } from '@pipod/shared'
+import type {
+  ConfigurePhasesInput,
+  Floor,
+  Match,
+  MatchAssignment,
+  Participant,
+  Stage,
+  Tournament,
+} from '@pipod/shared'
 import type { RunningServer } from '../../server'
 import { resetDb } from '../db'
 import { api, startTestServer, waitUntil, type ApiClient } from './testServer'
@@ -12,8 +20,11 @@ const TEST_TIMEOUT_MS = 20_000
 
 interface TournamentDetail {
   tournament: Tournament
+  stages: Stage[]
   matches: Match[]
 }
+
+const rules = { startScore: 501, outMode: 'double' } as const
 
 let server: RunningServer
 let rest: ApiClient
@@ -73,6 +84,17 @@ async function createTournament(name: string, playerNames: string[], floorNames:
   return { tournament, roster, floors }
 }
 
+/** Start a tournament with these phases; resolves with the first phase's matches. */
+function start(tournamentId: string, phases: ConfigurePhasesInput): Promise<Match[]> {
+  return rest.post<Match[]>(`/api/tournaments/${tournamentId}/start`, phases)
+}
+
+/** A one-match best-of-3 final, the smallest tournament there is. */
+const finalOnly: ConfigurePhasesInput = {
+  group: null,
+  knockout: { ...rules, bestOf: 3, qualifiersPerGroup: 2 },
+}
+
 /**
  * Play exactly the given matches as boards receive them. Boards poll for their next
  * assignment because the scheduler decides which floor gets what — with a round robin,
@@ -128,16 +150,11 @@ describe('full tournament over websockets', () => {
       const boardTwo = await openBoard('board-2', tournament.id, floorTwo.id)
       const spectator = await openSpectator(tournament.id)
 
-      const groupStage = await rest.post<Stage>(`/api/tournaments/${tournament.id}/stages`, {
-        name: 'Group',
-        type: 'group',
-        format: 'round_robin',
-        bestOf: 1,
-        startScore: 501,
-        outMode: 'double',
-      })
-      const groupMatches = await rest.post<Match[]>(`/api/stages/${groupStage.id}/generate`, {
-        groupCount: 1,
+      // All four qualify, so the bracket has two rounds — enough for a semifinal
+      // winner to be advanced into the final's slot.
+      const groupMatches = await start(tournament.id, {
+        group: { ...rules, bestOf: 1, groupCount: 1 },
+        knockout: { ...rules, bestOf: 3, qualifiersPerGroup: 4 },
       })
       expect(groupMatches).toHaveLength(6)
 
@@ -147,42 +164,30 @@ describe('full tournament over websockets', () => {
         betterSeedWins,
       )
 
-      // Every match is played, so the tournament reads completed even though the
-      // operator still has a knockout stage to add.
-      const afterGroups = await spectator.waitForState(
-        (snapshot) =>
-          snapshot.tournament.status === 'completed' &&
-          snapshot.matches.every((match) => match.status === 'completed'),
-      )
+      // The last group result draws the bracket from the final table on its own; the
+      // tournament never reads completed in between.
+      const afterGroups = await spectator.waitForState((snapshot) => snapshot.matches.length === 9)
+      expect(afterGroups.tournament.status).toBe('active')
       expect(afterGroups.standings.map((standing) => standing.participantId)).toEqual(
         roster.map((p) => p.id),
       )
       expect(afterGroups.standings[0]).toMatchObject({ wins: 3, losses: 0, points: 6 })
+      expect(spectator.states().some((snap) => snap.tournament.status === 'completed')).toBe(false)
 
       // The overview saw legs in flight, not just results.
       const groupIds = new Set(groupMatches.map((match) => match.id))
       expect(spectator.liveStates().some((state) => groupIds.has(state.matchId))).toBe(true)
 
-      // All four qualify, so the bracket has two rounds — enough for a semifinal
-      // winner to be advanced into the final's slot.
-      const knockoutStage = await rest.post<Stage>(`/api/tournaments/${tournament.id}/stages`, {
-        name: 'Knockout',
-        type: 'knockout',
-        format: 'single_elimination',
-        bestOf: 3,
-        startScore: 501,
-        outMode: 'double',
-      })
-      const bracket = await rest.post<Match[]>(`/api/stages/${knockoutStage.id}/generate`, {
-        qualifiersPerGroup: 4,
-      })
+      const bracket = afterGroups.matches.filter((match) => !groupIds.has(match.id))
       expect(bracket).toHaveLength(3)
       const finalId = bracket.find((match) => match.nextMatchId === null)!.id
       const semis = bracket.filter((match) => match.id !== finalId)
-      expect(semis.every((match) => match.status === 'ready')).toBe(true)
-
-      const reopened = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
-      expect(reopened.tournament.status).toBe('active')
+      expect(semis.every((match) => match.status !== 'pending')).toBe(true)
+      // Seeded 1v4 and 2v3 from the table.
+      expect(semis.map((m) => [m.participantAId, m.participantBId])).toEqual([
+        [roster[0]!.id, roster[3]!.id],
+        [roster[1]!.id, roster[2]!.id],
+      ])
 
       await playMatches(
         [boardOne, boardTwo],
@@ -213,6 +218,15 @@ describe('full tournament over websockets', () => {
       )
       expect(finalState.matches.every((match) => match.status === 'completed')).toBe(true)
 
+      // No snapshot ever showed a knockout match started next to an open group match.
+      for (const snap of spectator.states()) {
+        const groupOpen = snap.matches.some((m) => groupIds.has(m.id) && m.status !== 'completed')
+        const knockoutStarted = snap.matches.some(
+          (m) => !groupIds.has(m.id) && (m.status === 'live' || m.floorId !== null),
+        )
+        expect(groupOpen && knockoutStarted).toBe(false)
+      }
+
       // The floor that hosted the final is released, so its board falls back to
       // offline play instead of holding a finished match.
       const finalBoard = playedFinal.floorId === floorOne.id ? boardOne : boardTwo
@@ -233,15 +247,7 @@ describe('match-end race conditions over websockets', () => {
     )
     const floor = floors[0]!
     const board = await openBoard('board-1', tournament.id, floor.id)
-    const stage = await rest.post<Stage>(`/api/tournaments/${tournament.id}/stages`, {
-      name: 'Final',
-      type: 'knockout',
-      format: 'single_elimination',
-      bestOf: 3,
-      startScore: 501,
-      outMode: 'double',
-    })
-    await rest.post<Match[]>(`/api/stages/${stage.id}/generate`, {})
+    await start(tournament.id, finalOnly)
     const assignment = await board.nextAssignment()
     expect(assignment).not.toBeNull()
     return { tournament, roster, floor, board, assignment: assignment! }
@@ -352,15 +358,7 @@ describe('starting player over websockets', () => {
     )
     const floor = floors[0]!
     const board = await openBoard('board-1', tournament.id, floor.id)
-    const stage = await rest.post<Stage>(`/api/tournaments/${tournament.id}/stages`, {
-      name: 'Final',
-      type: 'knockout',
-      format: 'single_elimination',
-      bestOf: 3,
-      startScore: 501,
-      outMode: 'double',
-    })
-    await rest.post<Match[]>(`/api/stages/${stage.id}/generate`, {})
+    await start(tournament.id, finalOnly)
     const assignment = await board.nextAssignment()
     expect(assignment).not.toBeNull()
     return { tournament, roster, floor, board, assignment: assignment! }
@@ -484,6 +482,50 @@ describe('server log stream over websockets', () => {
 
       expect(quiet.logs()).toEqual([])
       expect(stranger.logs()).toEqual([])
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
+describe('phase setup over REST', () => {
+  it(
+    'locks the phases once the tournament has started',
+    async () => {
+      const { tournament } = await createTournament('Locked Cup', ['Ann', 'Bob'], [])
+      await start(tournament.id, finalOnly)
+
+      await expect(
+        rest.put(`/api/tournaments/${tournament.id}/phases`, {
+          group: { ...rules, bestOf: 1, groupCount: 1 },
+          knockout: null,
+        }),
+      ).rejects.toThrow(/400: .*phases cannot change once the tournament has started/)
+
+      const detail = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
+      expect(detail.stages.map((stage) => stage.type)).toEqual(['knockout'])
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
+describe('tournament list over websockets', () => {
+  it(
+    'pushes the list when a tournament is created, starts and is deleted',
+    async () => {
+      const viewer = await SpectatorClient.connect(server.url)
+      clients.push(viewer)
+      expect(await viewer.followTournaments()).toEqual([])
+
+      const { tournament } = await createTournament('List Cup', ['Ann', 'Bob'], [])
+      await viewer.waitForList((list) => list.some((t) => t.id === tournament.id))
+
+      await start(tournament.id, finalOnly)
+      await viewer.waitForList((list) =>
+        list.some((t) => t.id === tournament.id && t.status === 'active'),
+      )
+
+      await fetch(`${server.url}/api/tournaments/${tournament.id}`, { method: 'DELETE' })
+      await viewer.waitForList((list) => list.length === 0)
     },
     TEST_TIMEOUT_MS,
   )

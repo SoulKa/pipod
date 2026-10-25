@@ -1,8 +1,17 @@
-// Tournament orchestration: CRUD for tournaments/participants/stages and the
-// schedule/bracket generation that turns a stage into concrete matches.
+// Tournament orchestration: CRUD for tournaments/participants/phases and the
+// schedule/bracket generation that turns a phase into concrete matches.
 import { nanoid } from 'nanoid'
 import { eq, inArray } from 'drizzle-orm'
-import type { CreateStageInput, Floor, Match, Participant, Stage, Tournament } from '@pipod/shared'
+import type {
+  ConfigurePhasesInput,
+  Floor,
+  GroupStage,
+  Match,
+  Participant,
+  Stage,
+  Tournament,
+} from '@pipod/shared'
+import { PHASE_SETUP_ERRORS } from '@pipod/shared'
 import { db } from '../db/client'
 import {
   floorSessions,
@@ -20,7 +29,7 @@ import { repo } from '../repo'
 import { computeStandings, generateRoundRobin, generateSingleElimination } from '../engine'
 import { log } from '../logger'
 import { resolveByes } from './matches'
-import { syncTournamentStatus } from './tournamentStatus'
+import { deriveTournamentStatus, syncTournamentStatus } from './tournamentStatus'
 
 export function createTournament(name: string): Tournament {
   const row: Tournament = {
@@ -44,20 +53,12 @@ export function cancelTournament(id: string): Tournament {
   return { ...tournament, status: 'cancelled' }
 }
 
-/**
- * Undo a cancellation. The pre-cancel status isn't stored, so derive it from the data:
- * no matches → still in setup; all matches done → completed; otherwise active.
- */
+/** Undo a cancellation. The pre-cancel status isn't stored, so derive it from the data. */
 export function reactivateTournament(id: string): Tournament {
   const tournament = repo.getTournament(id)
   if (!tournament) throw new Error('tournament not found')
   if (tournament.status !== 'cancelled') throw new Error('tournament is not cancelled')
-  const matchList = repo.listMatches(id)
-  const status: Tournament['status'] = !matchList.length
-    ? 'setup'
-    : matchList.every((m) => m.status === 'completed')
-      ? 'completed'
-      : 'active'
+  const status = deriveTournamentStatus(id)
   db.update(tournaments).set({ status }).where(eq(tournaments.id, id)).run()
   log.info({ tournament: id, name: tournament.name, status }, 'tournament reactivated')
   return { ...tournament, status }
@@ -141,25 +142,93 @@ export function deleteParticipant(id: string): void {
   log.debug({ participant: id }, 'participant removed')
 }
 
-export function createStage(tournamentId: string, input: CreateStageInput): Stage {
-  const order = repo.listStages(tournamentId).length
-  const row: Stage = {
-    id: nanoid(),
-    tournamentId,
-    name: input.name,
-    type: input.type,
-    format: input.format,
-    order,
-    bestOf: input.bestOf,
-    startScore: input.startScore,
-    outMode: input.outMode,
+/**
+ * Replace a tournament's phase setup. Only possible before the schedule exists — the
+ * stage rows are what generated matches hang off.
+ */
+export function configurePhases(tournamentId: string, input: ConfigurePhasesInput): Stage[] {
+  if (!repo.getTournament(tournamentId)) throw new Error('tournament not found')
+  if (repo.listMatches(tournamentId).length) {
+    throw new Error('phases cannot change once the tournament has started')
   }
-  db.insert(stages).values(row).run()
+  db.delete(stages).where(eq(stages.tournamentId, tournamentId)).run()
+
+  const rows: Stage[] = []
+  if (input.group) rows.push({ id: nanoid(), tournamentId, type: 'group', ...input.group })
+  if (input.knockout) {
+    rows.push({
+      id: nanoid(),
+      tournamentId,
+      type: 'knockout',
+      ...input.knockout,
+      // Without a group phase everyone plays the bracket, so there is nothing to cut.
+      qualifiersPerGroup: input.group ? input.knockout.qualifiersPerGroup : null,
+    })
+  }
+  for (const row of rows) db.insert(stages).values(row).run()
   log.info(
-    { tournament: tournamentId, stage: row.name, type: row.type, bestOf: row.bestOf },
-    'stage created',
+    { tournament: tournamentId, phases: rows.map((r) => `${r.type} bo${r.bestOf}`).join(', ') },
+    'phases configured',
   )
-  return row
+  return rows
+}
+
+/**
+ * Save the phase setup and draw the first phase in one step — the tournament goes live
+ * from here. All or nothing: a start that is refused leaves the previous setup in place.
+ */
+export function startTournament(tournamentId: string, input: ConfigurePhasesInput): Match[] {
+  return db.transaction(() => {
+    // Refuses an unknown or already started tournament on its own.
+    const [first] = configurePhases(tournamentId, input)
+    if (repo.getTournament(tournamentId)!.status === 'cancelled') {
+      throw new Error('tournament is cancelled')
+    }
+    const players = repo.listParticipants(tournamentId).length
+    if (players < 2) throw new Error('a tournament needs at least two participants')
+    // The schema checks the requested group count; with few players fewer groups are drawn.
+    const { group, knockout } = input
+    if (
+      group &&
+      knockout &&
+      drawnGroupCount(group.groupCount, players) * knockout.qualifiersPerGroup < 2
+    ) {
+      throw new Error(PHASE_SETUP_ERRORS.tooFewQualifiers)
+    }
+    return generateStage(first!)
+  })
+}
+
+/**
+ * How many groups a draw really makes: every group needs two players, or it has no
+ * matches to play. Groups never come out smaller than two, so a group phase sends at
+ * least two players on exactly when this times the qualifiers per group is two or more.
+ */
+function drawnGroupCount(requested: number, players: number): number {
+  return Math.max(1, Math.min(requested, Math.floor(players / 2)))
+}
+
+/** Whether the group phase has been drawn and every one of its matches is played. */
+function isGroupPhaseFinished(group: Stage): boolean {
+  const groupMatches = repo.listStageMatches(group.id)
+  return groupMatches.length > 0 && groupMatches.every((m) => m.status === 'completed')
+}
+
+/**
+ * Open the knockout phase once the group phase is over. Called after every completed
+ * match; does nothing until the last group match is in, and nothing once the bracket
+ * exists. Returns the generated bracket (empty when nothing happened).
+ *
+ * This is the only way a bracket follows a group phase, which is what keeps phases
+ * from overlapping: no knockout match exists while a group match is still open.
+ */
+export function advancePhases(tournamentId: string): Match[] {
+  const group = repo.getGroupStage(tournamentId)
+  const knockout = repo.getKnockoutStage(tournamentId)
+  if (!group || !knockout) return []
+  if (repo.listStageMatches(knockout.id).length || !isGroupPhaseFinished(group)) return []
+  log.info({ tournament: tournamentId }, 'group phase finished, drawing the knockout bracket')
+  return generateStage(knockout)
 }
 
 /** Sort participants by seed (unseeded last), then name — the default seeding. */
@@ -186,7 +255,7 @@ function distributeToGroups(ordered: Participant[], groupCount: number): string[
  * winners first (ranked against each other), then all runners-up, etc., limited to
  * `perGroup` qualifiers from each group.
  */
-function qualifiersFromGroupStage(groupStage: Stage, perGroup: number): string[] {
+function qualifiersFromGroupStage(groupStage: GroupStage, perGroup: number): string[] {
   const stageMatches = repo.listStageMatches(groupStage.id)
   const rankedPerGroup = repo.listGroups(groupStage.id).map((group) => {
     const members = repo.listGroupMembers(group.id)
@@ -205,37 +274,14 @@ function qualifiersFromGroupStage(groupStage: Stage, perGroup: number): string[]
   return seeds
 }
 
-/** Remove any previously generated matches/groups for a stage (idempotent regen). */
-function clearStage(stageId: string): void {
-  const existingGroups = repo.listGroups(stageId)
-  if (existingGroups.length) {
-    db.delete(groupMembers)
-      .where(
-        inArray(
-          groupMembers.groupId,
-          existingGroups.map((g) => g.id),
-        ),
-      )
-      .run()
-    db.delete(groups).where(eq(groups.stageId, stageId)).run()
-  }
-  db.delete(matches).where(eq(matches.stageId, stageId)).run()
-}
-
 /**
  * Generate all matches for a stage. Round-robin (group) stages split participants
  * into groups and schedule everyone-plays-everyone. Knockout stages seed from the
- * previous group stage's standings (if any) or by participant seed, then build a
- * single-elimination bracket and resolve byes.
+ * finished group phase's standings (if there is one) or by participant seed, then
+ * build a single-elimination bracket and resolve byes.
  */
-export function generateStage(
-  stageId: string,
-  opts: { groupCount?: number; qualifiersPerGroup?: number } = {},
-): Match[] {
-  const stage = repo.getStage(stageId)
-  if (!stage) throw new Error('stage not found')
-
-  clearStage(stageId)
+function generateStage(stage: Stage): Match[] {
+  const stageId = stage.id
   db.update(tournaments)
     .set({ status: 'active' })
     .where(eq(tournaments.id, stage.tournamentId))
@@ -244,7 +290,7 @@ export function generateStage(
   const roster = repo.listParticipants(stage.tournamentId).sort(bySeed)
 
   if (stage.type === 'group') {
-    const groupCount = Math.max(1, Math.min(opts.groupCount ?? 1, roster.length))
+    const groupCount = drawnGroupCount(stage.groupCount, roster.length)
     const buckets = distributeToGroups(roster, groupCount)
     buckets.forEach((memberIds, gi) => {
       const groupId = nanoid()
@@ -266,15 +312,14 @@ export function generateStage(
       }
     })
   } else {
-    // Knockout: seed from a prior group stage if present, else by participant seed.
-    const priorGroupStage = repo
-      .listStages(stage.tournamentId)
-      .filter((s) => s.type === 'group' && s.order < stage.order)
-      .at(-1)
-
-    const seedIds = priorGroupStage
-      ? qualifiersFromGroupStage(priorGroupStage, opts.qualifiersPerGroup ?? 2)
-      : roster.map((p) => p.id)
+    // A cut exists exactly when a group phase came first; otherwise seed the whole roster.
+    const seedIds =
+      stage.qualifiersPerGroup === null
+        ? roster.map((p) => p.id)
+        : qualifiersFromGroupStage(
+            repo.getGroupStage(stage.tournamentId)!,
+            stage.qualifiersPerGroup,
+          )
 
     const bracket = generateSingleElimination(seedIds)
     const idByLocal = new Map(bracket.map((m) => [m.localId, nanoid()] as const))
@@ -306,8 +351,7 @@ export function generateStage(
   log.info(
     {
       tournament: stage.tournamentId,
-      stage: stage.name,
-      type: stage.type,
+      phase: stage.type,
       players: roster.length,
       matches: generated.length,
     },

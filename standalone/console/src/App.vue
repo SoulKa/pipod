@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterView, RouterLink } from 'vue-router'
+import { RouterView, RouterLink, useRoute } from 'vue-router'
 import LogTerminal from './components/LogTerminal.vue'
 import { useServerLogs } from './serverLogs'
 
+const route = useRoute()
+/** Spectator screens skip the shell. Unresolved (before the first navigation) counts as bare. */
+const bare = computed(() => !route.matched.length || route.meta.bare === true)
+
 // The log feed runs for the whole session, not just while the drawer is open: the server
-// forwards live lines only, so subscribing on open would show an empty terminal.
+// forwards live lines only, so subscribing on open would show an empty terminal. Viewers
+// never start it — a room full of phones has no use for the server log.
 const { lines, connected, start, stop, clear } = useServerLogs()
 const showLogs = ref(false)
 /** Highest sequence number the operator has already seen in the open terminal. */
@@ -21,6 +26,7 @@ const problems = computed(
 )
 
 function onKeydown(event: KeyboardEvent): void {
+  if (bare.value) return
   // Ctrl+` like an IDE terminal; Escape closes it again.
   if (event.ctrlKey && event.key === '`') {
     event.preventDefault()
@@ -36,8 +42,17 @@ watch([showLogs, lines], () => {
   if (showLogs.value) seenSeq.value = lines.value.at(-1)?.seq ?? seenSeq.value
 })
 
+// Starts on the first console page; staying subscribed when the operator then opens a
+// viewer tab keeps the buffer intact for coming back.
+watch(
+  bare,
+  (isBare) => {
+    if (!isBare) start()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  start()
   window.addEventListener('keydown', onKeydown)
 })
 
@@ -48,7 +63,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="console-app">
+  <main v-if="bare" class="console-content">
+    <RouterView />
+  </main>
+  <div v-else class="console-app">
     <header class="console-topbar">
       <RouterLink class="console-brand" to="/admin">🎯 Pi-Darts Konsole</RouterLink>
       <nav class="console-nav pd-row">

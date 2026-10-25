@@ -38,9 +38,12 @@ const rows = computed(() =>
 const isWinner = (match: Match, participantId: string | null) =>
   !!match.winnerId && match.winnerId === participantId
 
-/** Legs won, preferring the in-memory live mirror over the persisted tally. */
+/**
+ * Legs won, preferring the in-memory live mirror while the match is in play. The mirror's
+ * last word on a match predates its deciding leg, so once it is over the result counts.
+ */
 function legsOf(match: Match): { a: number; b: number } {
-  const state = props.live.get(match.id)
+  const state = match.status === 'live' ? props.live.get(match.id) : undefined
   return { a: state?.legsA ?? match.legsA, b: state?.legsB ?? match.legsB }
 }
 

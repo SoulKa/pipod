@@ -4,8 +4,8 @@ import type {
   BracketSlot,
   MatchStatus,
   OutMode,
-  StageFormat,
   StageType,
+  StartScore,
   TournamentStatus,
 } from '@pipod/shared'
 
@@ -60,15 +60,15 @@ export const stages = sqliteTable(
   {
     id: text('id').primaryKey(),
     tournamentId: text('tournament_id').notNull(),
-    name: text('name').notNull(),
     type: text('type').$type<StageType>().notNull(),
-    format: text('format').$type<StageFormat>().notNull(),
-    order: integer('order').notNull(),
     bestOf: integer('best_of').notNull(),
-    startScore: integer('start_score').notNull(),
+    startScore: integer('start_score').$type<StartScore>().notNull(),
     outMode: text('out_mode').$type<OutMode>().notNull(),
+    groupCount: integer('group_count'),
+    qualifiersPerGroup: integer('qualifiers_per_group'),
   },
-  (table) => [index('idx_stages_tournament').on(table.tournamentId)],
+  // A tournament has at most one phase of each type.
+  (table) => [uniqueIndex('uq_stages_tournament_type').on(table.tournamentId, table.type)],
 )
 
 export const groups = sqliteTable('groups', {
