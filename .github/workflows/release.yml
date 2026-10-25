@@ -1,8 +1,9 @@
 name: release
 
-# Publishes a full platform release. Push a version tag (e.g. v1.4.0) and this builds the store
-# apps under apps/*, generates the OTA manifest.json + per-app tarballs, then seeds those apps
-# into the Electron launcher and packages it for the Raspberry Pi (Linux arm64 AppImage).
+# Publishes a full platform release. Push a version tag (e.g. v1.4.0), or publish a release with
+# a new tag in the GitHub UI (which pushes that tag), and this builds the store apps under
+# apps/*, generates the OTA manifest.json + per-app tarballs, then seeds those apps into the
+# Electron launcher and packages it for the Raspberry Pi (Linux arm64 AppImage).
 # Everything is attached to one GitHub Release: the Pi launcher reads its manifest.json to
 # self-update installed apps over the air, and the installers are there for flashing the shell.
 # App bundles are static web assets (arch-independent), so a single arm64 job builds it all.
@@ -52,12 +53,17 @@ jobs:
       - name: Package launcher (arm64 AppImage)
         run: yarn workspace @pipod/launcher exec electron-builder --linux --arm64 --publish never --config.extraMetadata.version=${{ steps.version.outputs.version }}
 
+      # A release published in the GitHub UI already exists by now: attach the assets and keep its
+      # title and notes. A pushed tag has none yet, so create it. --clobber makes a re-run replace
+      # what an earlier attempt uploaded instead of failing on it.
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "${{ github.ref_name }}"
-          release/*.tar.gz release/manifest.json
-          standalone/launcher/dist/*.AppImage
-          --title "${{ github.ref_name }}"
-          --generate-notes
+          TAG: ${{ github.ref_name }}
+        run: |
+          assets=(release/*.tar.gz release/manifest.json standalone/launcher/dist/*.AppImage)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --title "$TAG" --generate-notes
+          fi
