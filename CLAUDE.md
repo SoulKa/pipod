@@ -185,6 +185,15 @@ launch query. When a change touches it:
 - Call this out explicitly in the commit/PR description ("needs a major/minor launcher release")
   so the tag is chosen correctly — the version is only decided when tagging.
 
+**App versioning.** An app's version is its own `package.json` `version` (not the release tag), and
+it names the bundle in `manifest.json`, the store and the tarball. **Whenever you modify an app
+under `apps/*`, check whether its `package.json` version has already been bumped since the last
+release tag (`git diff <latest tag> -- apps/<app>/package.json`) and bump it if not** — semver:
+patch for fixes, minor for features, major for breaking changes. A bundle whose version doesn't
+grow is treated as equal-or-newer by the launcher's seed check, so an older seed can overwrite a
+newer release-installed bundle on every restart, and the store shows "v1.0.0 → v1.0.0". All
+`<id>.app.json` descriptors in one app directory share that version.
+
 ## Domain rules
 
 - A turn is up to 3 darts. Going below 0 is a **bust** (whole turn reverts).
