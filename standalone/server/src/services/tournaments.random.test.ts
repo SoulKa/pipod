@@ -1,7 +1,7 @@
 // Randomised tournaments: random rosters, phase setups and results, played to the end
 // through the same services the routes use. Each run checks the rules that must hold for
-// any tournament, not one expected outcome. Seeds are fixed, so a failure names its seed
-// and replays exactly; raise RUNS locally to search wider.
+// any tournament, not one expected outcome. Seeds are fixed, so every run is reproducible;
+// raise RUNS locally to search wider.
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { ConfigurePhasesInput, Match, Participant } from '@pipod/shared'
 import { computeStandings } from '../engine'
@@ -165,17 +165,12 @@ function playRandomTournament(seed: number): void {
   }
 }
 
-describe('random tournaments', () => {
+// One test per seed: each stays well inside the per-test timeout on a slow CI runner, and a
+// failure names its seed, so `yarn test -t "seed 15"` replays exactly that tournament.
+const SEEDS = Array.from({ length: RUNS }, (_, i) => i + 1)
+
+describe('random tournaments hold every phase rule', () => {
   beforeEach(resetDb)
 
-  it(`hold every phase rule across ${RUNS} seeded runs`, () => {
-    for (let seed = 1; seed <= RUNS; seed++) {
-      resetDb()
-      try {
-        playRandomTournament(seed)
-      } catch (err) {
-        throw new Error(`seed ${seed}: ${(err as Error).message}`, { cause: err })
-      }
-    }
-  })
+  it.each(SEEDS)('seed %i', (seed) => playRandomTournament(seed))
 })
