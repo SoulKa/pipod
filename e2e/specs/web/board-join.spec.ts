@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { createFloor, createTournament, uniqueName } from '../../support/api'
+import { waitUntilArmed } from '../../support/board'
 import { BOARD_URL } from '../../support/stack'
 
 // The Pi's portrait touchscreen. The board is a fixed frame of exactly this size with its
@@ -13,6 +14,7 @@ test('a board joins a tournament floor by typing the server IP', async ({ page, 
   // A plain browser has no launcher to search the LAN with, so the wizard opens on the keypad.
   await page.goto(`${BOARD_URL}/?mode=tournament`)
   await expect(page.getByText('IP des Turnier-Servers eingeben')).toBeVisible()
+  await waitUntilArmed(page)
   // A bare IP means the server's default port, which is where the suite runs it.
   for (const key of '127.0.0.1') await page.getByRole('button', { name: key, exact: true }).click()
   await page.getByRole('button', { name: 'Verbinden' }).click()
