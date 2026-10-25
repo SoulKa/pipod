@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import type { Tournament } from '@pipod/shared'
-import { api } from '../api'
+import { createSocket, type ConsoleSocket } from '../socket'
+import IdleBoard from '../components/IdleBoard.vue'
 import OverviewView from './OverviewView.vue'
 
-/**
- * How often to look for a newer tournament. There is no list-level socket event, and a
- * spectator screen switching over a few seconds late is fine.
- */
-const POLL_MS = 15_000
-
 const tournaments = ref<Tournament[]>([])
-const loaded = ref(false)
-let timer: ReturnType<typeof setInterval> | undefined
+/** Set once the server answered, or failed to — until then there is nothing to say. */
+const settled = ref(false)
+const connected = ref(false)
+const socket = shallowRef<ConsoleSocket | null>(null)
 
 /** The newest active tournament, else the newest one at all (so results stay up). */
 const current = computed(() => {
@@ -20,34 +17,37 @@ const current = computed(() => {
   return newestFirst.find((t) => t.status === 'active') ?? newestFirst[0] ?? null
 })
 
-async function load(): Promise<void> {
-  try {
-    tournaments.value = await api.listTournaments()
-  } catch {
-    // Keep showing the last known tournament; the next poll retries.
-  } finally {
-    loaded.value = true
-  }
-}
-
 onMounted(() => {
-  void load()
-  timer = setInterval(() => void load(), POLL_MS)
+  // The server pushes the list whenever a tournament appears, goes away or changes status,
+  // so the screen switches the moment one starts. A reconnect re-subscribes, and the
+  // fresh list it gets covers whatever changed while the connection was down.
+  const s = createSocket()
+  socket.value = s
+  s.on('connect', () => {
+    connected.value = true
+    s.emit('tournaments:subscribe')
+  })
+  s.on('disconnect', () => (connected.value = false))
+  s.on('connect_error', () => (settled.value = true))
+  s.on('tournaments:list', (list) => {
+    tournaments.value = list
+    settled.value = true
+  })
 })
 
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => {
+  socket.value?.disconnect()
+  socket.value = null
+})
 </script>
 
 <template>
   <!-- Keyed so switching tournaments re-opens the feed for the new one. -->
   <OverviewView v-if="current" :key="current.id" :id="current.id" qr-path="/" />
-  <div v-else-if="loaded" class="pd-panel live-waiting">
-    <p class="pd-muted">Noch kein Turnier angelegt — diese Seite wechselt automatisch.</p>
+  <div v-else-if="settled" class="pd-panel live-waiting">
+    <IdleBoard
+      :connected="connected"
+      title="Noch kein Turnier angelegt — diese Seite wechselt automatisch."
+    />
   </div>
 </template>
-
-<style scoped>
-.live-waiting {
-  text-align: center;
-}
-</style>

@@ -118,6 +118,22 @@ describe('BracketTree rendering', () => {
     expect(tree.findAll('.match')[0]!.classes()).toContain('match--live')
   })
 
+  it('shows the result, not a stale live tally, once a match is over', () => {
+    const matches = semisAndFinal()
+    matches[0] = { ...matches[0]!, status: 'completed', winnerId: 'pA', legsA: 2, legsB: 1 }
+    // The last live update arrived before the deciding leg.
+    const live = new Map<string, LiveMatchState>([
+      [
+        's0',
+        { matchId: 's0', legIndex: 2, currentParticipantId: 'pA', scores: [], legsA: 1, legsB: 1 },
+      ],
+    ])
+    const tree = mountTree(matches, live)
+
+    const legs = tree.findAll('.match')[0]!.findAll('.legs')
+    expect(legs.map((n) => n.text())).toEqual(['2', '1'])
+  })
+
   it('draws one connector elbow per downstream match', () => {
     const tree = mountTree(semisAndFinal())
     // One gap (semis → final) holding a single join for the one final.

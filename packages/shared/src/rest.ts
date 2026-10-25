@@ -4,7 +4,6 @@ import { z } from 'zod'
 
 export const outModeSchema = z.enum(['single', 'double'])
 export const stageTypeSchema = z.enum(['group', 'knockout'])
-export const stageFormatSchema = z.enum(['round_robin', 'single_elimination', 'double_elimination'])
 
 /** 301 or 501, matching the board's selectable start scores. */
 export const startScoreSchema = z
@@ -51,17 +50,45 @@ export type AddParticipantInput = z.infer<typeof addParticipantSchema>
 export const updateParticipantSchema = addParticipantSchema.partial()
 export type UpdateParticipantInput = z.infer<typeof updateParticipantSchema>
 
-export const createStageSchema = z.object({
-  name: z.string().min(1).max(60),
-  type: stageTypeSchema,
-  format: stageFormatSchema,
+/** Match rules every phase sets for its own matches. */
+const phaseRulesSchema = z.object({
   bestOf: z.number().int().min(1).max(21).default(3),
   startScore: startScoreSchema.default(501),
   outMode: outModeSchema.default('double'),
-  /** For group stages: how many groups to split participants across. */
-  groupCount: z.number().int().min(1).max(16).optional(),
 })
-export type CreateStageInput = z.infer<typeof createStageSchema>
+
+export const groupPhaseSchema = phaseRulesSchema.extend({
+  /** How many round-robin groups to split participants across. */
+  groupCount: z.number().int().min(1).max(16).default(1),
+})
+export type GroupPhaseInput = z.infer<typeof groupPhaseSchema>
+
+export const knockoutPhaseSchema = phaseRulesSchema.extend({
+  /** How many advance from each group; ignored without a group phase. */
+  qualifiersPerGroup: z.number().int().min(1).max(8).default(2),
+})
+export type KnockoutPhaseInput = z.infer<typeof knockoutPhaseSchema>
+
+/** Why a phase setup is refused; clients key their own wording off these. */
+export const PHASE_SETUP_ERRORS = {
+  noPhase: 'at least one phase must be enabled',
+  tooFewQualifiers: 'the knockout phase needs at least two qualifiers',
+} as const
+
+/** A tournament's phase setup: null turns a phase off. Replaces any previous setup. */
+export const configurePhasesSchema = z
+  .object({
+    group: groupPhaseSchema.nullable(),
+    knockout: knockoutPhaseSchema.nullable(),
+  })
+  .refine((v) => v.group || v.knockout, { message: PHASE_SETUP_ERRORS.noPhase })
+  .refine(
+    (v) => !v.group || !v.knockout || v.group.groupCount * v.knockout.qualifiersPerGroup >= 2,
+    {
+      message: PHASE_SETUP_ERRORS.tooFewQualifiers,
+    },
+  )
+export type ConfigurePhasesInput = z.infer<typeof configurePhasesSchema>
 
 /** Report a completed leg's winner (server tallies match legs from these). */
 export const reportLegSchema = z.object({

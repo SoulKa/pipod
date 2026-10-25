@@ -75,6 +75,8 @@ export interface TournamentSnapshot {
 }
 
 export interface ServerToClientEvents {
+  /** Every tournament, sent on subscribe and whenever one is added, removed or changes status. */
+  'tournaments:list': (tournaments: Tournament[]) => void
   'tournament:state': (payload: TournamentSnapshot) => void
   'match:assigned': (payload: MatchAssignment) => void
   'match:live': (state: LiveMatchState) => void
@@ -89,6 +91,8 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   /** Bind a board's stable ID to a tournament floor. */
   'board:register': (payload: { boardId: string; tournamentId: string; floorId: string }) => void
+  /** Receive `tournaments:list` (the viewer following whichever tournament is active). */
+  'tournaments:subscribe': () => void
   /** Subscribe to a tournament's room to receive state + live updates. */
   'tournament:subscribe': (payload: { tournamentId: string }) => void
   /** A board takes ownership of a ready match. */

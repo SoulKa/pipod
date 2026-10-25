@@ -8,6 +8,7 @@ import type { SortableEvent } from 'sortablejs'
 import { VueDraggable } from 'vue-draggable-plus'
 import type { Floor, LiveMatchState, Match } from '@pipod/shared'
 import { api, type TournamentDetail } from '../api'
+import { phaseLabel } from '../phases'
 
 const props = defineProps<{ detail: TournamentDetail; live: Map<string, LiveMatchState> }>()
 const emit = defineEmits<{ refresh: []; error: [message: string] }>()
@@ -39,8 +40,10 @@ const nameOf = (id: string | null): string => {
   if (!id) return '—'
   return props.detail.participants.find((p) => p.id === id)?.name ?? '—'
 }
-const stageName = (stageId: string): string =>
-  props.detail.stages.find((s) => s.id === stageId)?.name ?? ''
+const stageName = (stageId: string): string => {
+  const type = props.detail.stages.find((s) => s.id === stageId)?.type
+  return type ? phaseLabel(type) : ''
+}
 const liveOnFloor = (floorId: string): Match | undefined =>
   props.detail.matches.find((m) => m.floorId === floorId && m.status === 'live')
 const pendingCount = (): number => props.detail.matches.filter((m) => m.status === 'pending').length

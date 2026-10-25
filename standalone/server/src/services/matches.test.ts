@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { CreateStageInput, Match } from '@pipod/shared'
+import type { Match } from '@pipod/shared'
 import { resetDb } from '../test/db'
+import { knockoutOnly } from '../test/phases'
 import { repo } from '../repo'
-import {
-  addParticipant,
-  createFloor,
-  createStage,
-  createTournament,
-  generateStage,
-} from './tournaments'
+import { addParticipant, createFloor, createTournament, startTournament } from './tournaments'
 import { assignMatchFloor, claimMatch, dispatchMatch, legsToWin, reportLeg } from './matches'
 
 describe('legsToWin', () => {
@@ -28,17 +23,8 @@ function seedKnockout(count: number, bestOf: number) {
   const players = Array.from({ length: count }, (_, i) =>
     addParticipant(tournament.id, `P${i}`, i + 1),
   )
-  const input: CreateStageInput = {
-    name: 'KO',
-    type: 'knockout',
-    format: 'single_elimination',
-    bestOf,
-    startScore: 501,
-    outMode: 'double',
-  }
-  const stage = createStage(tournament.id, input)
-  const matches = generateStage(stage.id)
-  return { tournament, players, stage, matches }
+  const matches = startTournament(tournament.id, knockoutOnly({ bestOf }))
+  return { tournament, players, matches }
 }
 
 const round0 = (matches: Match[]) => matches.filter((m) => m.round === 0)
@@ -121,7 +107,7 @@ describe('reportLeg', () => {
   })
 })
 
-describe('resolveByes (via generateStage)', () => {
+describe('resolveByes (via startTournament)', () => {
   beforeEach(resetDb)
 
   it('auto-completes a single-participant match and advances the winner', () => {
@@ -134,6 +120,22 @@ describe('resolveByes (via generateStage)', () => {
 
     const final = finalOf(matches)
     expect(final.participantAId).toBe(topSeed.id)
+  })
+
+  it('keeps the final open until the other semifinal is played', () => {
+    // The top seed's bye fills one final slot at once; the other still waits for 2 v 3.
+    const { players, matches } = seedKnockout(3, 1)
+    const semi = round0(matches).find((m) => m.participantBId !== null)!
+
+    expect(finalOf(matches)).toMatchObject({ status: 'pending', winnerId: null })
+
+    reportLeg(semi.id, 0, semi.participantAId!)
+    expect(repo.getMatch(finalOf(matches).id)).toMatchObject({
+      status: 'ready',
+      participantAId: players[0]!.id,
+      participantBId: semi.participantAId,
+      winnerId: null,
+    })
   })
 })
 

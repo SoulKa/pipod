@@ -13,6 +13,7 @@ import { log, subscribeToLogs } from '../logger'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
 import { maybeAutoAssign } from '../services/scheduler'
+import { advancePhases } from '../services/tournaments'
 import {
   clearFloorSession,
   ensureFloorSession,
@@ -28,6 +29,7 @@ import {
   floorRoomFor,
   roomFor,
   setIo,
+  TOURNAMENT_LIST_ROOM,
   type IoServer,
 } from './hub'
 import { createMatchSnapshot, deriveLiveMatchState } from './live'
@@ -124,6 +126,11 @@ export function setupRealtime(io: IoServer): () => void {
         maybeAutoAssign(tournamentId)
         dispatchQueuedFloorMatch(floorId)
       }
+    })
+
+    socket.on('tournaments:subscribe', () => {
+      socket.join(TOURNAMENT_LIST_ROOM)
+      socket.emit('tournaments:list', repo.listTournaments())
     })
 
     socket.on('tournament:subscribe', ({ tournamentId }) => {
@@ -224,6 +231,7 @@ export function setupRealtime(io: IoServer): () => void {
           }
         }
         if (match.status === 'completed') {
+          advancePhases(match.tournamentId)
           maybeAutoAssign(match.tournamentId)
           dispatchReadyFloors(match.tournamentId)
         }

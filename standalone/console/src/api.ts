@@ -2,7 +2,7 @@
 // dev proxy forwards /api to the server.
 import type {
   AddParticipantInput,
-  CreateStageInput,
+  ConfigurePhasesInput,
   Floor,
   Match,
   Participant,
@@ -47,6 +47,16 @@ async function post<T>(url: string, body?: unknown): Promise<T> {
   )
 }
 
+async function put<T>(url: string, body: unknown): Promise<T> {
+  return json<T>(
+    await fetch(url, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
 export const api = {
   async getInfo(): Promise<ServerInfo> {
     return json(await fetch('/api/info'))
@@ -81,14 +91,12 @@ export const api = {
   async deleteParticipant(id: string): Promise<void> {
     await fetch(`/api/participants/${id}`, { method: 'DELETE' })
   },
-  createStage(tournamentId: string, input: CreateStageInput): Promise<Stage> {
-    return post(`/api/tournaments/${tournamentId}/stages`, input)
+  configurePhases(tournamentId: string, input: ConfigurePhasesInput): Promise<Stage[]> {
+    return put(`/api/tournaments/${tournamentId}/phases`, input)
   },
-  generateStage(
-    stageId: string,
-    opts: { groupCount?: number; qualifiersPerGroup?: number },
-  ): Promise<Match[]> {
-    return post(`/api/stages/${stageId}/generate`, opts)
+  /** Save the phase setup and draw the first phase, all or nothing. */
+  startTournament(tournamentId: string, phases: ConfigurePhasesInput): Promise<Match[]> {
+    return post(`/api/tournaments/${tournamentId}/start`, phases)
   },
   claimMatch(id: string): Promise<Match> {
     return post(`/api/matches/${id}/claim`)

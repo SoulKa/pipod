@@ -45,19 +45,13 @@ function match(over: Partial<Match> = {}): Match {
   }
 }
 
-function stage(over: Partial<Stage> = {}): Stage {
-  return {
-    id: 'ko',
-    tournamentId: 't1',
-    name: 'K.-o.',
-    type: 'knockout',
-    format: 'single_elimination',
-    order: 0,
-    bestOf: 3,
-    startScore: 501,
-    outMode: 'double',
-    ...over,
-  }
+const rules = { tournamentId: 't1', bestOf: 3, startScore: 501, outMode: 'double' } as const
+
+/** The knockout phase, or with `group` the group phase before it. */
+function stage(kind: 'knockout' | 'group' = 'knockout'): Stage {
+  return kind === 'group'
+    ? { id: 'g', type: 'group', groupCount: 1, ...rules }
+    : { id: 'ko', type: 'knockout', qualifiersPerGroup: null, ...rules }
 }
 
 function setDetail(status: TournamentStatus, stages: Stage[], matches: Match[]): void {
@@ -88,7 +82,7 @@ describe('OverviewView', () => {
   it('renders knockout stages as a bracket tree and group stages as a list', () => {
     setDetail(
       'active',
-      [stage(), stage({ id: 'g', type: 'group', format: 'round_robin', order: 1 })],
+      [stage('group'), stage()],
       [match({ id: 'k1' }), match({ id: 'g1', stageId: 'g' })],
     )
     const view = mount(OverviewView, { props: { id: 't1' } })
@@ -119,11 +113,33 @@ describe('OverviewView', () => {
     expect(view.find('.live-zone').text()).not.toContain('Warten')
   })
 
-  it('still waits for a board when nothing is live in a running tournament', () => {
+  it('shows the idle board while nothing is live in a running tournament', () => {
     setDetail('active', [stage()], [match({ id: 'k1' })])
     const view = mount(OverviewView, { props: { id: 't1' } })
 
-    expect(view.find('.live-empty').text()).toContain('Aktuell läuft kein Match.')
+    expect(view.find('.live-empty .idle').exists()).toBe(true)
+    expect(view.find('.live-empty').text()).toContain('Warte auf das erste Match')
     expect(view.find('.live-zone').text()).toContain('Warten auf ein Board')
+  })
+
+  it('waits for the next match once a result is in, but not for a bye', () => {
+    const bye = match({ id: 'bye', status: 'completed', participantAId: 'pA', winnerId: 'pA' })
+    const next = match({ id: 'k2', participantAId: 'pA', participantBId: 'pB' })
+    setDetail('active', [stage()], [bye, next])
+    const byeOnly = mount(OverviewView, { props: { id: 't1' } })
+    expect(byeOnly.find('.live-empty').text()).toContain('Warte auf das erste Match')
+
+    setDetail('active', [stage()], [{ ...decidedFinal(), legsA: 2 }, next])
+    const played = mount(OverviewView, { props: { id: 't1' } })
+    expect(played.find('.live-empty').text()).toContain('Warte auf das nächste Match')
+  })
+
+  it('names phases by their type and says when the bracket gets drawn', () => {
+    setDetail('active', [stage('group'), stage()], [match({ id: 'g1', stageId: 'g' })])
+    const view = mount(OverviewView, { props: { id: 't1' } })
+
+    const headings = view.findAll('.stage-card h3').map((h) => h.text())
+    expect(headings).toEqual(['Gruppenphase', 'K.-o.-Phase'])
+    expect(view.text()).toContain('Wird nach der Gruppenphase aus der Tabelle ausgelost.')
   })
 })

@@ -1,31 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import type { CreateStageInput, TournamentStatus } from '@pipod/shared'
+import type { TournamentStatus } from '@pipod/shared'
 import { resetDb } from '../test/db'
+import { groupOnly, groupThenKnockout, knockoutOnly } from '../test/phases'
 import { db } from '../db/client'
 import { tournaments } from '../db/schema'
 import { repo } from '../repo'
 import { reportLeg } from './matches'
 import {
   addParticipant,
+  advancePhases,
   cancelTournament,
-  createStage,
   createTournament,
-  generateStage,
+  startTournament,
 } from './tournaments'
 import { syncAllTournamentStatuses, syncTournamentStatus } from './tournamentStatus'
-
-const stageInput = (over: Partial<CreateStageInput>): CreateStageInput => ({
-  name: 'Stage',
-  type: 'group',
-  format: 'round_robin',
-  bestOf: 1,
-  startScore: 501,
-  outMode: 'double',
-  ...over,
-})
-
-const knockoutInput = () => stageInput({ type: 'knockout', format: 'single_elimination' })
 
 /** Seed a tournament with `count` participants seeded 1..count. */
 function withPlayers(count: number) {
@@ -41,8 +30,7 @@ describe('syncTournamentStatus', () => {
 
   it('leaves a cancelled tournament cancelled even when every match is done', () => {
     const { tournament, players } = withPlayers(2)
-    const stage = createStage(tournament.id, knockoutInput())
-    const [final] = generateStage(stage.id)
+    const [final] = startTournament(tournament.id, knockoutOnly())
     reportLeg(final!.id, 0, players[0]!.id)
     cancelTournament(tournament.id)
 
@@ -56,13 +44,9 @@ describe('syncTournamentStatus', () => {
     expect(repo.getTournament(tournament.id)!.status).toBe('setup')
   })
 
-  it('falls back to setup when a stage generates no matches at all', () => {
-    // A one-player bracket has nothing to schedule, so the tournament is still
-    // being set up despite generateStage having flipped it to active.
+  it('refuses to start without two players, staying in setup', () => {
     const { tournament } = withPlayers(1)
-    const stage = createStage(tournament.id, knockoutInput())
-
-    expect(generateStage(stage.id)).toHaveLength(0)
+    expect(() => startTournament(tournament.id, knockoutOnly())).toThrow(/two participants/)
     expect(repo.getTournament(tournament.id)!.status).toBe('setup')
   })
 
@@ -76,8 +60,7 @@ describe('completion on the deciding leg', () => {
 
   it('completes the tournament when the final match is decided', () => {
     const { tournament, players } = withPlayers(2)
-    const stage = createStage(tournament.id, knockoutInput())
-    const [final] = generateStage(stage.id)
+    const [final] = startTournament(tournament.id, knockoutOnly())
 
     expect(repo.getTournament(tournament.id)!.status).toBe('active')
 
@@ -88,8 +71,7 @@ describe('completion on the deciding leg', () => {
 
   it('stays active while any match is unplayed', () => {
     const { tournament } = withPlayers(4)
-    const stage = createStage(tournament.id, stageInput({ type: 'group' }))
-    const matches = generateStage(stage.id, { groupCount: 1 })
+    const matches = startTournament(tournament.id, groupOnly())
 
     reportLeg(matches[0]!.id, 0, matches[0]!.participantAId!)
 
@@ -98,8 +80,7 @@ describe('completion on the deciding leg', () => {
 
   it('stays active while a bracket still has a pending downstream match', () => {
     const { tournament } = withPlayers(4)
-    const stage = createStage(tournament.id, knockoutInput())
-    const matches = generateStage(stage.id)
+    const matches = startTournament(tournament.id, knockoutOnly())
     const round0 = matches.filter((m) => m.round === 0)
 
     round0.forEach((m) => reportLeg(m.id, 0, m.participantAId!))
@@ -119,8 +100,7 @@ describe('syncAllTournamentStatuses', () => {
   /** Play a tournament to its end, then force its row back to a stale status. */
   function finishedButStoredAs(status: TournamentStatus) {
     const { tournament, players } = withPlayers(2)
-    const stage = createStage(tournament.id, knockoutInput())
-    const [final] = generateStage(stage.id)
+    const [final] = startTournament(tournament.id, knockoutOnly())
     reportLeg(final!.id, 0, players[0]!.id)
     db.update(tournaments).set({ status }).where(eq(tournaments.id, tournament.id)).run()
     return tournament
@@ -150,8 +130,7 @@ describe('syncAllTournamentStatuses', () => {
   it('reconciles each tournament independently', () => {
     const stale = finishedButStoredAs('active')
     const { tournament: running } = withPlayers(4)
-    const stage = createStage(running.id, stageInput({ type: 'group' }))
-    generateStage(stage.id, { groupCount: 1 })
+    startTournament(running.id, groupOnly())
 
     const changed = syncAllTournamentStatuses()
 
@@ -161,24 +140,30 @@ describe('syncAllTournamentStatuses', () => {
 })
 
 /**
- * The group→knockout window: every match is completed while the operator has yet to
- * generate the next stage, so the tournament briefly reads as completed. Generating
- * the knockout must put it back to active.
+ * The group→knockout handover: every drawn match is completed, but the bracket has yet
+ * to be drawn from the final table, so the tournament must not read as completed.
  */
-describe('group → knockout window', () => {
+describe('group → knockout handover', () => {
   beforeEach(resetDb)
 
-  it('completes after the group stage, then reactivates when the knockout is generated', () => {
-    const { tournament } = withPlayers(2)
-    const group = createStage(tournament.id, stageInput({ type: 'group' }))
-    const groupMatches = generateStage(group.id, { groupCount: 1 })
+  it('stays active between the last group match and the drawn bracket', () => {
+    const { tournament } = withPlayers(4)
+    const groupMatches = startTournament(tournament.id, groupThenKnockout())
     groupMatches.forEach((m) => reportLeg(m.id, 0, m.participantAId!))
 
-    expect(repo.getTournament(tournament.id)!.status).toBe('completed')
-
-    const knockout = createStage(tournament.id, knockoutInput())
-    generateStage(knockout.id)
-
     expect(repo.getTournament(tournament.id)!.status).toBe('active')
+
+    const bracket = advancePhases(tournament.id)
+    expect(bracket.length).toBeGreaterThan(0)
+    expect(repo.getTournament(tournament.id)!.status).toBe('active')
+
+    // Play the bracket round by round; each round's winners fill the next.
+    for (let round = 0; round < 4; round++) {
+      repo
+        .listMatches(tournament.id)
+        .filter((m) => m.status === 'ready')
+        .forEach((m) => reportLeg(m.id, 0, m.participantAId!))
+    }
+    expect(repo.getTournament(tournament.id)!.status).toBe('completed')
   })
 })

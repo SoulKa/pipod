@@ -152,20 +152,24 @@ export function advanceWinner(match: Match): Match[] {
 }
 
 /**
- * Resolve first-round byes: any match with exactly one participant is auto-won by
- * that participant and its winner advanced. Iterates so chained byes settle.
- * Returns every match that changed.
+ * Resolve byes: a match with exactly one participant and nothing left to fill the other
+ * slot is auto-won by that participant and its winner advanced. Iterates so chained
+ * byes settle. Returns every match that changed.
  */
 export function resolveByes(stageId: string): Match[] {
   const changed: Match[] = []
   let progressed = true
   while (progressed) {
     progressed = false
-    for (const m of repo.listStageMatches(stageId)) {
+    const stageMatches = repo.listStageMatches(stageId)
+    for (const m of stageMatches) {
       if (m.status === 'completed') continue
       const hasA = !!m.participantAId
       const hasB = !!m.participantBId
       if (hasA === hasB) continue // both or neither present — not a bye
+      // An empty slot a feeder match will still fill is waiting for that match, not a bye.
+      const emptySlot = hasA ? 'b' : 'a'
+      if (stageMatches.some((f) => f.nextMatchId === m.id && f.nextSlot === emptySlot)) continue
       const winnerId = (m.participantAId ?? m.participantBId)!
       db.update(matches).set({ status: 'completed', winnerId }).where(eq(matches.id, m.id)).run()
       const completed = repo.getMatch(m.id)!

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { resetDb } from '../test/db'
+import { groupOnly } from '../test/phases'
 import {
   addParticipant,
   createFloor,
-  createStage,
   createTournament,
-  generateStage,
+  startTournament,
 } from '../services/tournaments'
 import { assignMatchFloor } from '../services/matches'
 import { repo } from '../repo'
@@ -36,15 +36,10 @@ describe('dispatchFloorMatch', () => {
     addParticipant(tournament.id, 'Alice', 1)
     addParticipant(tournament.id, 'Bob', 2)
     const floor = createFloor(tournament.id, 'Floor 1')
-    const stage = createStage(tournament.id, {
-      name: 'Gruppenphase',
-      type: 'group',
-      format: 'round_robin',
-      bestOf: 1,
-      startScore: 301,
-      outMode: 'single',
-    })
-    const match = generateStage(stage.id)[0]!
+    const match = startTournament(
+      tournament.id,
+      groupOnly({ startScore: 301, outMode: 'single' }),
+    )[0]!
     assignMatchFloor(match.id, floor.id)
 
     const { io, emitted } = fakeIo(`floor:${tournament.id}:${floor.id}`)

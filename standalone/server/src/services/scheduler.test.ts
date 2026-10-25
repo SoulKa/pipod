@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { CreateStageInput, Match } from '@pipod/shared'
+import type { Match } from '@pipod/shared'
 import { resetDb } from '../test/db'
+import { groupOnly } from '../test/phases'
 import { repo } from '../repo'
-import {
-  addParticipant,
-  createFloor,
-  createStage,
-  createTournament,
-  generateStage,
-} from './tournaments'
+import { addParticipant, createFloor, createTournament, startTournament } from './tournaments'
 import { assignMatchFloor, reorderFloorQueue } from './matches'
 import { maybeAutoAssign, runAutoAssign, setAutoAssign } from './scheduler'
 
@@ -18,16 +13,7 @@ function seedGroup(count: number) {
   const players = Array.from({ length: count }, (_, i) =>
     addParticipant(tournament.id, `P${i}`, i + 1),
   )
-  const input: CreateStageInput = {
-    name: 'RR',
-    type: 'group',
-    format: 'round_robin',
-    bestOf: 1,
-    startScore: 501,
-    outMode: 'double',
-  }
-  const stage = createStage(tournament.id, input)
-  const matches = generateStage(stage.id, { groupCount: 1 })
+  const matches = startTournament(tournament.id, groupOnly())
   return { tournament, players, matches }
 }
 

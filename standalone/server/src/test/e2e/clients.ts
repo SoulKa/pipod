@@ -15,6 +15,7 @@ import type {
   MatchAssignment,
   Seat,
   ServerToClientEvents,
+  Tournament,
   TournamentSnapshot,
 } from '@pipod/shared'
 import { legStarterSeat } from '@pipod/shared'
@@ -226,6 +227,16 @@ export class SpectatorClient {
   async subscribe(tournamentId: string): Promise<TournamentSnapshot> {
     this.socket.emit('tournament:subscribe', { tournamentId })
     return this.events.wait('tournament:state')
+  }
+
+  /** Follow the tournament list, like the viewer at `/`. Resolves with the initial list. */
+  async followTournaments(): Promise<Tournament[]> {
+    this.socket.emit('tournaments:subscribe')
+    return this.events.wait('tournaments:list')
+  }
+
+  waitForList(predicate: (list: Tournament[]) => boolean, timeoutMs = 4000): Promise<Tournament[]> {
+    return this.events.wait('tournaments:list', { predicate, timeoutMs })
   }
 
   waitForState(

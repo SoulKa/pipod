@@ -9,6 +9,7 @@ export function startTestServer(): Promise<RunningServer> {
 export interface ApiClient {
   get: <T>(path: string) => Promise<T>
   post: <T>(path: string, body?: unknown) => Promise<T>
+  put: <T>(path: string, body?: unknown) => Promise<T>
 }
 
 /** Minimal REST client for the /api surface; throws with the server's message on failure. */
@@ -27,6 +28,7 @@ export function api(baseUrl: string): ApiClient {
   return {
     get: (path) => request('GET', path),
     post: (path, body) => request('POST', path, body),
+    put: (path, body) => request('PUT', path, body),
   }
 }
 

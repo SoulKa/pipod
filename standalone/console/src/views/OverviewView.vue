@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import type { StageType } from '@pipod/shared'
 import { useTournamentFeed } from '../feed'
 import { buildBracketRounds, championOf } from '../bracket'
+import { phaseLabel } from '../phases'
 import BracketTree from '../components/BracketTree.vue'
+import IdleBoard from '../components/IdleBoard.vue'
 import ViewerQrButton from '../components/ViewerQrButton.vue'
-
-const STAGE_TYPE_LABELS: Record<StageType, string> = {
-  group: 'Gruppe',
-  knockout: 'K.-o.',
-}
-const stageTypeLabel = (type: StageType) => STAGE_TYPE_LABELS[type] ?? type
 
 const props = defineProps<{
   id: string
@@ -40,16 +35,18 @@ const stageGroups = computed(() =>
 
 const isCompleted = computed(() => detail.value?.tournament.status === 'completed')
 
+/** Before the first result the idle screen says so, rather than "next match". */
+const nothingPlayed = computed(
+  () => !(detail.value?.matches ?? []).some((m) => m.status === 'completed' && m.legsA + m.legsB),
+)
+
 /**
- * The tournament winner is whoever won the final of its last knockout stage. A
- * group-only tournament has no such match, so the standings table speaks for it.
+ * The tournament winner is whoever won the knockout final. A group-only tournament has
+ * no such match, so the standings table speaks for it.
  */
 const champion = computed(() => {
   if (!isCompleted.value) return null
-  const knockout = [...stageGroups.value]
-    .sort((x, y) => x.stage.order - y.stage.order)
-    .filter((s) => s.stage.type === 'knockout')
-    .at(-1)
+  const knockout = stageGroups.value.find((s) => s.stage.type === 'knockout')
   return knockout ? championOf(buildBracketRounds(knockout.matches)) : null
 })
 </script>
@@ -119,10 +116,14 @@ const champion = computed(() => {
           </div>
         </article>
       </div>
+      <div v-else-if="isCompleted" class="pd-panel pd-panel--compact live-empty">
+        <p class="pd-muted">Turnier beendet.</p>
+      </div>
       <div v-else class="pd-panel pd-panel--compact live-empty">
-        <p class="pd-muted">
-          {{ isCompleted ? 'Turnier beendet.' : 'Aktuell läuft kein Match.' }}
-        </p>
+        <IdleBoard
+          :connected="connected"
+          :title="nothingPlayed ? 'Warte auf das erste Match…' : 'Warte auf das nächste Match…'"
+        />
       </div>
     </section>
 
@@ -176,8 +177,8 @@ const champion = computed(() => {
           >
             <div class="stage-card-heading">
               <div>
-                <h3>{{ stage.name }}</h3>
-                <p class="pd-muted">{{ stageTypeLabel(stage.type) }} · Bo{{ stage.bestOf }}</p>
+                <h3>{{ phaseLabel(stage.type) }}</h3>
+                <p class="pd-muted">Bo{{ stage.bestOf }} · {{ stage.startScore }}</p>
               </div>
               <span class="match-count">{{ matches.length }} Matches</span>
             </div>
@@ -198,7 +199,13 @@ const champion = computed(() => {
                 }}</span>
               </div>
             </div>
-            <p v-else class="pd-muted">Matches wurden noch nicht generiert.</p>
+            <p v-else class="pd-muted">
+              {{
+                stage.type === 'knockout' && stageGroups.length > 1
+                  ? 'Wird nach der Gruppenphase aus der Tabelle ausgelost.'
+                  : 'Wird beim Turnierstart ausgelost.'
+              }}
+            </p>
           </section>
         </div>
         <div v-else class="pd-panel pd-panel--compact">

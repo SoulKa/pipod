@@ -120,9 +120,17 @@ modules under `apps/board/src/game/`:
 bodies with `@pipod/shared` schemas; services mutate SQLite through Drizzle; `realtime/`
 broadcasts snapshots, match changes, and the in-memory live-score mirror (display-only; resets
 after each reported leg). Keep REST mutations broadcasting through `realtime/hub.ts` so console
-overview state stays synchronized. Tournament scheduling math is pure under `src/engine`;
+overview state stays synchronized; `broadcastSnapshot` also pushes `tournaments:list` (when it
+changed) to the viewer. Tournament scheduling math is pure under `src/engine`;
 orchestration in `services/tournaments.ts` persists round-robin groups / knockout brackets, and
-match lifecycle + bracket advancement live in `services/matches.ts`. SQLite lives at
+match lifecycle + bracket advancement live in `services/matches.ts`. A tournament has fixed
+phases — an optional group phase, then an optional knockout phase (at least one on; at most one
+stage row of each type, enforced by a unique index). `PUT /api/tournaments/:id/phases` saves the
+setup; `POST /api/tournaments/:id/start` saves it and draws the first phase in one transaction.
+When the last group match completes, `advancePhases` draws the bracket from the final table;
+callers of `reportLeg` (REST route and socket handler) must call it before auto-assign/dispatch.
+That is the only way a bracket follows a group phase, so phases never overlap by construction —
+there is no separate lock to check. SQLite lives at
 `${DATA_DIR:-./data}/pipod.db`; Drizzle applies committed migrations at startup — define table
 and index changes only in `src/db/schema.ts`, then generate a migration. The server can serve a
 built console SPA (`CONSOLE_DIR`, defaulting to `standalone/console/dist` when built): `/` is the
@@ -143,7 +151,9 @@ records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards the
 the `logs` room, and a subscriber must never log (it would recurse).
 
 **Console (`standalone/console`).** Its typed REST client calls `/api`; its Socket.IO client
-receives tournament snapshots and live-match updates. The shell (`App.vue`) also opens a
+receives tournament snapshots and live-match updates. Spectator routes (`/`, `/view/:id`) carry
+`meta.bare` and render without the shell or log feed; `/` follows the tournament list over
+`tournaments:subscribe`. Otherwise the shell (`App.vue`) opens a
 session-long log feed (`serverLogs.ts` → `logs:subscribe`) and renders `LogTerminal.vue` as a
 bottom drawer (topbar button or Ctrl+backtick); the server forwards live lines only, so the
 buffer lives in the tab and filtering by level/text happens client-side. In dev, Vite proxies

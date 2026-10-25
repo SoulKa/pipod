@@ -3,12 +3,22 @@ import AdminView from './views/AdminView.vue'
 import LiveView from './views/LiveView.vue'
 import OverviewView from './views/OverviewView.vue'
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    /**
+     * A spectator screen: rendered without the console shell (no admin navigation, no
+     * server-log feed), since it runs on phones and wall displays that only watch.
+     */
+    bare?: boolean
+  }
+}
+
 const routes: RouteRecordRaw[] = [
   // Spectators land here (the QR codes link to it): it follows the active tournament.
-  { path: '/', name: 'live', component: LiveView },
+  { path: '/', name: 'live', component: LiveView, meta: { bare: true } },
   { path: '/admin', name: 'admin', component: AdminView },
   // Overview is per-tournament so it can be opened full-screen on a big display.
-  { path: '/view/:id', name: 'view', component: OverviewView, props: true },
+  { path: '/view/:id', name: 'view', component: OverviewView, props: true, meta: { bare: true } },
 ]
 
 export const router = createRouter({
