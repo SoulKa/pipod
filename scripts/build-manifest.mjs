@@ -67,6 +67,13 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
     if (!existsSync(join(distDir, meta.icon))) {
       throw new Error(`${file} icon "${meta.icon}" is not present in ${distDir}.`)
     }
+    // The launcher versions this bundle runs on; the store holds it back on any other. Only exact
+    // (`1.2.0`) and caret (`^1.2.0`) ranges — the launcher's SemVer understands nothing else.
+    if (!/^\^?\d+\.\d+\.\d+$/.test(meta.launcher ?? '')) {
+      throw new Error(
+        `${file} needs "launcher": an exact or caret version range, e.g. "^1.0.0" (got ${JSON.stringify(meta.launcher)}).`,
+      )
+    }
     const artifact = `${id}-${version}.tar.gz`
     const artifactPath = join(outDir, artifact)
 
@@ -83,6 +90,7 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
       sha256: createHash('sha256').update(buf).digest('hex'),
       size: buf.length,
       icon: meta.icon,
+      launcher: meta.launcher,
       ...(meta.query ? { query: meta.query } : {}),
     })
   }
@@ -97,5 +105,7 @@ writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2
 
 console.log(`Wrote ${apps.length} app(s) + manifest.json to ${outDir}:`)
 for (const a of apps) {
-  console.log(`  ${a.id}@${a.version}  sha256:${a.sha256.slice(0, 12)}…  ${a.size} bytes`)
+  console.log(
+    `  ${a.id}@${a.version} (launcher ${a.launcher})  sha256:${a.sha256.slice(0, 12)}…  ${a.size} bytes`,
+  )
 }

@@ -5,7 +5,8 @@ name: release
 # apps/*, generates the OTA manifest.json + per-app tarballs, then seeds those apps into the
 # Electron launcher and packages it for the Raspberry Pi (Linux arm64 AppImage).
 # Everything is attached to one GitHub Release: the Pi launcher reads its manifest.json to
-# self-update installed apps over the air, and the installers are there for flashing the shell.
+# self-update installed apps over the air, and latest-linux-arm64.yml lets it offer its own update
+# in Settings (the AppImage embeds its blockmap, so that update downloads only changed blocks).
 # App bundles are static web assets (arch-independent), so a single arm64 job builds it all.
 on:
   push:
@@ -24,10 +25,18 @@ jobs:
       # the allow-listed electron/node-gyp git dep) alongside @pipod/shared and the store apps.
       - uses: ./.github/actions/setup
 
-      # v1.4.0 -> 1.4.0 ; stamps the launcher installer version without committing a bump.
+      # v1.4.0 -> 1.4.0 ; stamps the launcher installer version without committing a bump. Only
+      # plain X.Y.Z: the launcher compares it against each app's `launcher` range and refuses to
+      # start on anything else (e.g. a -rc suffix).
       - name: Derive version from tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must be vX.Y.Z, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Builds board + dashboard and writes standalone/launcher/resources/seed so the shipped
       # launcher boots with the current apps pre-installed.
@@ -61,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          assets=(release/*.tar.gz release/manifest.json standalone/launcher/dist/*.AppImage)
+          assets=(release/*.tar.gz release/manifest.json standalone/launcher/dist/*.AppImage standalone/launcher/dist/latest-linux-arm64.yml)
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
           else

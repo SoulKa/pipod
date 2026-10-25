@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { LauncherSettings } from '../shared/types'
+import type { LauncherSettings } from '@shared/types'
 
 const DEFAULTS: LauncherSettings = { autoUpdateOnLaunch: true }
 

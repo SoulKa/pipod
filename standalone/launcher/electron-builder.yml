@@ -34,8 +34,13 @@ linux:
     - AppImage
   category: Utility
 appImage:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # No version in the name: electron-updater then replaces the AppImage in place on update,
+  # instead of writing a new versioned file that an autostart entry wouldn't point at.
+  artifactName: ${productName}-${arch}.${ext}
 npmRebuild: false
+# Where the launcher's electron-updater looks for releases (the release workflow uploads the
+# generated latest-linux-arm64.yml itself; electron-builder runs with --publish never).
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: SoulKa
+  repo: piPod

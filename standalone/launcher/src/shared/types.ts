@@ -13,6 +13,11 @@ export interface ManifestApp {
   icon: string
   /** Query string appended to the bundle's index.html at launch (e.g. `mode=tournament`). */
   query?: string
+  /**
+   * Launcher versions the bundle runs on: exact (`1.2.0`) or caret (`^1.2.0`). Absent in
+   * manifests built before launcher versioning, which count as compatible.
+   */
+  launcher?: string
 }
 
 export interface Manifest {
@@ -43,7 +48,13 @@ export interface CatalogEntry {
   installed: boolean
   installedVersion: string | null
   availableVersion: string | null
+  /** A newer bundle is installable now (false while it's held back by `needsLauncher`). */
   updateAvailable: boolean
+  /**
+   * The release's `launcher` range when it holds back an install or update this launcher
+   * doesn't satisfy; null otherwise.
+   */
+  needsLauncher: string | null
 }
 
 /** Progress emitted while installing/updating an app. */
@@ -59,6 +70,20 @@ export interface LauncherSettings {
   /** Auto-apply newer bundles on launch when a release is reachable. */
   autoUpdateOnLaunch: boolean
 }
+
+/**
+ * The launcher's own self-update (electron-updater). `unsupported` outside a packaged AppImage;
+ * `idle` when up to date (or the check failed); `error` only for a failed download, keeping the
+ * version so it can be retried.
+ */
+export type LauncherUpdateState =
+  | { status: 'unsupported' | 'idle' }
+  | { status: 'available'; version: string }
+  | { status: 'downloading'; version: string; percent: number }
+  | { status: 'error'; version: string; message: string }
+
+/** LauncherUpdateState plus the running launcher's version, as shown in Settings. */
+export type LauncherUpdate = { current: string } & LauncherUpdateState
 
 /** Live network status derived from the OS network interfaces in the main process. */
 export interface NetworkState {
@@ -88,4 +113,9 @@ export interface LauncherBridge {
   onActiveApp(cb: (id: string | null) => void): () => void
   /** Fires after launch-time auto-updates with the ids that changed. */
   onAutoUpdated(cb: (ids: string[]) => void): () => void
+  getLauncherUpdate(): Promise<LauncherUpdate>
+  /** Download the available launcher update, then restart into it. */
+  downloadLauncherUpdate(): Promise<void>
+  /** Fires whenever the launcher's self-update state changes. */
+  onLauncherUpdate(cb: (update: LauncherUpdate) => void): () => void
 }

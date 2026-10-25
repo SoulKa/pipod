@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { NetworkState } from '../../../shared/types'
+import type { NetworkState } from '@shared/types'
 
 const props = defineProps<{ state: NetworkState }>()
 

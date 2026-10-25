@@ -1,6 +1,6 @@
 import { net } from 'electron'
 import { GITHUB_OWNER, GITHUB_REPO } from './config'
-import type { Manifest } from '../shared/types'
+import type { Manifest } from '@shared/types'
 
 interface ReleaseAsset {
   name: string

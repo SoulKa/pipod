@@ -164,7 +164,26 @@ full-screen settings); `src/main` is the Electron main process that installs/upd
 and launches each as a `WebContentsView` served over the custom `piapp://` scheme. Launcher
 settings are only reachable via the `window.launcher` preload bridge, so launcher UI stays in the
 renderer rather than shipping as a `piapp://` bundle. `yarn prepare-seed` refreshes the seed
-manifest bundled under `resources/seed`.
+manifest bundled under `resources/seed`. Types/constants shared by main, preload and renderer live
+in `src/shared` and are imported as `@shared/…` (alias set in `electron.vite.config.ts`, both
+tsconfigs and `vitest.config.ts`). Installed apps update themselves on launch from the latest
+release's `manifest.json`; the launcher updates itself only when the user taps Update in Settings
+(`launcherUpdater.ts`, electron-updater, AppImage only — the Settings tile shows a badge).
+
+**Launcher versioning.** The launcher's version is the release tag (CI stamps it; plain `vX.Y.Z`
+only — the release fails otherwise), and every app's
+`<id>.app.json` declares the launcher versions it runs on as `"launcher": "^X.Y.Z"` (exact or
+caret only — `build-manifest.mjs` rejects anything else). The store holds back bundles whose range
+the running launcher doesn't satisfy. The launcher's **app-facing surface** is what apps rely on:
+`piapp://` resolution, the `/.launcher/*` endpoints, `HOME_BUTTON_CSS` / `.piapp-home`, and the
+launch query. When a change touches it:
+
+- **Breaking** (removed/renamed/changed endpoint or behaviour): the next release must be a
+  **major** bump, and every app's `launcher` range moves to `^<new major>.0.0` once it's adapted.
+- **Additive, and an app starts using it**: the next release must be at least a **minor** bump,
+  and that app's range minimum moves up to that version.
+- Call this out explicitly in the commit/PR description ("needs a major/minor launcher release")
+  so the tag is chosen correctly — the version is only decided when tagging.
 
 ## Domain rules
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { CatalogEntry, UpdateProgress } from '../../../shared/types'
+import type { CatalogEntry, UpdateProgress } from '@shared/types'
 
 const props = defineProps<{
   catalog: CatalogEntry[]
@@ -21,6 +21,10 @@ function status(entry: CatalogEntry): string {
     }
     return `${p.phase}…`
   }
+  // Settings offers the launcher update that unblocks it.
+  if (entry.needsLauncher) {
+    return `v${entry.availableVersion} needs launcher ${entry.needsLauncher}`
+  }
   if (entry.updateAvailable) return `v${entry.installedVersion} → v${entry.availableVersion}`
   if (entry.installed) return `Installed v${entry.installedVersion}`
   if (entry.availableVersion) return `Available v${entry.availableVersion}`
@@ -31,7 +35,9 @@ const actionLabel = (entry: CatalogEntry): string =>
   entry.updateAvailable ? 'Update' : entry.installed ? 'Installed' : 'Install'
 
 const canAct = (entry: CatalogEntry): boolean =>
-  !busy(entry.id) && (entry.updateAvailable || (!entry.installed && !!entry.availableVersion))
+  !busy(entry.id) &&
+  !entry.needsLauncher &&
+  (entry.updateAvailable || (!entry.installed && !!entry.availableVersion))
 
 const sorted = computed(() => [...props.catalog].sort((a, b) => a.name.localeCompare(b.name)))
 </script>

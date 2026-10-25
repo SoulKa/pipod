@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import StorePanel from '../StorePanel.vue'
-import type { CatalogEntry } from '../../../../shared/types'
+import type { CatalogEntry } from '@shared/types'
 
 function entry(over: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
@@ -13,6 +13,7 @@ function entry(over: Partial<CatalogEntry> = {}): CatalogEntry {
     installedVersion: null,
     availableVersion: '1.0.0',
     updateAvailable: false,
+    needsLauncher: null,
     ...over
   }
 }
@@ -38,5 +39,12 @@ describe('StorePanel', () => {
     const store = mountStore([entry({ id: 'console', name: 'Console' })])
     await store.get('.row .primary').trigger('click')
     expect(store.emitted('install')).toEqual([['console']])
+  })
+
+  it('holds back a bundle that needs a newer launcher', async () => {
+    const store = mountStore([entry({ needsLauncher: '^2.0.0', availableVersion: '2.0.0' })])
+    expect(store.get('.status').text()).toBe('v2.0.0 needs launcher ^2.0.0')
+    await store.get('.row .primary').trigger('click')
+    expect(store.emitted('install')).toBeUndefined()
   })
 })

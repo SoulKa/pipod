@@ -5,9 +5,10 @@ import type {
   InstalledApp,
   LauncherBridge,
   LauncherSettings,
+  LauncherUpdate,
   NetworkState,
   UpdateProgress
-} from '../shared/types'
+} from '@shared/types'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => cb(payload)
@@ -28,7 +29,12 @@ const launcher: LauncherBridge = {
   getNetworkState: () => ipcRenderer.invoke('launcher:getNetworkState') as Promise<NetworkState>,
   onProgress: (cb) => subscribe<UpdateProgress>('launcher:progress', cb),
   onActiveApp: (cb) => subscribe<string | null>('launcher:activeApp', cb),
-  onAutoUpdated: (cb) => subscribe<string[]>('launcher:autoUpdated', cb)
+  onAutoUpdated: (cb) => subscribe<string[]>('launcher:autoUpdated', cb),
+  getLauncherUpdate: () =>
+    ipcRenderer.invoke('launcher:getLauncherUpdate') as Promise<LauncherUpdate>,
+  downloadLauncherUpdate: () =>
+    ipcRenderer.invoke('launcher:downloadLauncherUpdate') as Promise<void>,
+  onLauncherUpdate: (cb) => subscribe<LauncherUpdate>('launcher:launcherUpdate', cb)
 }
 
 if (process.contextIsolated) {

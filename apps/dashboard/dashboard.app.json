@@ -1,5 +1,6 @@
 {
   "displayName": "Dashboard",
   "description": "Weather & transit board",
-  "icon": "icon.svg"
+  "icon": "icon.svg",
+  "launcher": "^1.0.0"
 }

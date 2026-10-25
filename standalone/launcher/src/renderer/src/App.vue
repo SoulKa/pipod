@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
-import type { CatalogEntry, InstalledApp, NetworkState, UpdateProgress } from '../../shared/types'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import type {
+  CatalogEntry,
+  InstalledApp,
+  LauncherUpdate,
+  NetworkState,
+  UpdateProgress
+} from '@shared/types'
+import { canStartLauncherUpdate } from '@shared/launcherUpdate'
 import StorePanel from './components/StorePanel.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
 import StatusBarWifi from './components/StatusBarWifi.vue'
@@ -23,6 +30,9 @@ const networkState = ref<NetworkState>({ online: true, wifi: true })
 const view = ref<'home' | 'settings' | 'store'>('home')
 const progress = ref<Record<string, UpdateProgress>>({})
 const toasts = ref<{ id: number; text: string }[]>([])
+const launcherUpdate = ref<LauncherUpdate>({ current: '', status: 'unsupported' })
+// Badge the Settings tile while a launcher update waits for the user (incl. a failed download).
+const launcherUpdatePending = computed(() => canStartLauncherUpdate(launcherUpdate.value))
 
 let toastSeq = 0
 const disposers: Array<() => void> = []
@@ -103,6 +113,8 @@ onMounted(async () => {
       void refresh()
     })
   )
+  disposers.push(window.launcher.onLauncherUpdate((u) => (launcherUpdate.value = u)))
+  launcherUpdate.value = await window.launcher.getLauncherUpdate()
   await refresh()
 })
 
@@ -114,7 +126,11 @@ onUnmounted(() => disposers.forEach((d) => d()))
   <button v-if="isOverlay" class="home-notch" title="Home" @click="goHome">⌂</button>
 
   <!-- Full-screen Settings "app" — covers the home, like a launched app. -->
-  <SettingsScreen v-else-if="view === 'settings'" @home="view = 'home'" />
+  <SettingsScreen
+    v-else-if="view === 'settings'"
+    :launcher-update="launcherUpdate"
+    @home="view = 'home'"
+  />
 
   <!-- Full-screen Store "app" — covers the home, like a launched app. -->
   <StorePanel
@@ -186,7 +202,12 @@ onUnmounted(() => disposers.forEach((d) => d()))
       </button>
 
       <button class="tile" @click="view = 'settings'">
-        <span class="tile-icon tile-icon--glyph tile-icon--settings">⚙️</span>
+        <span class="tile-badge-anchor">
+          <span class="tile-icon tile-icon--glyph tile-icon--settings">⚙️</span>
+          <span v-if="launcherUpdatePending" class="tile-badge" title="Launcher update available">
+            1
+          </span>
+        </span>
         <span class="tile-name">Settings</span>
       </button>
     </footer>
@@ -384,6 +405,29 @@ onUnmounted(() => disposers.forEach((d) => d()))
 
 .tile-icon--settings {
   background: linear-gradient(180deg, #64748b, #334155);
+}
+
+/* The icon clips its glass overlay, so the badge hangs off a wrapper instead of the icon. */
+.tile-badge-anchor {
+  position: relative;
+}
+
+/* iOS-style notification badge over the icon's top-right corner. */
+.tile-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: center;
+  color: #fff;
+  background: #ef4444;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 .tile-name {

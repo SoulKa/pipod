@@ -6,34 +6,35 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { appDir, appMetaPath, appsRoot, seedDir } from './paths'
 import { downloadAsset, fetchLatestManifest } from './github'
+import { SemVer } from './semver'
 import type {
   CatalogEntry,
   InstalledApp,
   Manifest,
   ManifestApp,
   UpdateProgress
-} from '../shared/types'
+} from '@shared/types'
 
 const execFileAsync = promisify(execFile)
-
-/** Numeric dot-separated version compare: <0 if a<b, 0 if equal, >0 if a>b. */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
-    if (diff !== 0) return diff
-  }
-  return 0
-}
 
 /**
  * Owns the installed app bundles on disk: seeding, listing, checking the remote release for
  * updates, and installing/updating with sha256 verification + atomic swap (previous bundle kept
- * as .bak for rollback). Emits 'progress' (UpdateProgress) while installing.
+ * as .bak for rollback). Emits 'progress' (UpdateProgress) while installing. Release bundles
+ * whose `launcher` range the running launcher doesn't satisfy are held back until it updates.
  */
 export class AppStore extends EventEmitter {
   private installed = new Map<string, InstalledApp>()
+  private readonly launcherVersion: SemVer | null
+
+  /**
+   * @param launcherVersion the running launcher's version; null accepts every bundle
+   * @throws if it isn't `major.minor.patch` — the release workflow only stamps such tags
+   */
+  constructor(launcherVersion: string | null) {
+    super()
+    this.launcherVersion = launcherVersion === null ? null : SemVer.parse(launcherVersion)
+  }
 
   async init(): Promise<void> {
     await fs.mkdir(appsRoot(), { recursive: true })
@@ -64,6 +65,10 @@ export class AppStore extends EventEmitter {
     return [...ids].map((id) => {
       const inst = this.installed.get(id) ?? null
       const remote = manifest?.apps.find((a) => a.id === id) ?? null
+      const changed =
+        !!remote && !!inst && (remote.version !== inst.version || remote.sha256 !== inst.sha256)
+      // Only a bundle the user could otherwise install or update is held back.
+      const needsLauncher = remote && (changed || !inst) ? this.unmetLauncherRange(remote) : null
       return {
         id,
         name: remote?.name ?? id,
@@ -73,8 +78,8 @@ export class AppStore extends EventEmitter {
         installed: !!inst,
         installedVersion: inst?.version ?? null,
         availableVersion: remote?.version ?? null,
-        updateAvailable:
-          !!remote && !!inst && (remote.version !== inst.version || remote.sha256 !== inst.sha256)
+        updateAvailable: changed && !needsLauncher,
+        needsLauncher
       }
     })
   }
@@ -86,6 +91,10 @@ export class AppStore extends EventEmitter {
       const { manifest, assets } = await fetchLatestManifest()
       const app = manifest.apps.find((a) => a.id === id)
       if (!app) throw new Error(`App "${id}" is not in the latest release`)
+      const needsLauncher = this.unmetLauncherRange(app)
+      if (needsLauncher) {
+        throw new Error(`${app.name} ${app.version} needs launcher ${needsLauncher}`)
+      }
       const url = assets.get(app.artifact)
       if (!url) throw new Error(`Release is missing asset ${app.artifact}`)
 
@@ -114,6 +123,17 @@ export class AppStore extends EventEmitter {
       }
     }
     return updated
+  }
+
+  /** The bundle's `launcher` range if the running launcher doesn't satisfy it, else null. */
+  private unmetLauncherRange(app: ManifestApp): string | null {
+    if (!app.launcher || !this.launcherVersion) return null
+    try {
+      return this.launcherVersion.satisfies(app.launcher) ? null : app.launcher
+    } catch {
+      // A range this launcher can't parse comes from a newer release format → hold it back.
+      return app.launcher
+    }
   }
 
   private async loadInstalled(): Promise<void> {
@@ -148,13 +168,14 @@ export class AppStore extends EventEmitter {
     }
     for (const app of manifest.apps) {
       const inst = this.installed.get(app.id)
-      // Up to date, or the seed would be a downgrade → leave the installed bundle alone.
-      if (inst && (inst.sha256 === app.sha256 || compareVersions(app.version, inst.version) < 0)) {
-        continue
-      }
       const tarball = join(dir, app.artifact)
       if (!existsSync(tarball)) continue
       try {
+        if (inst) {
+          const isDowngrade = SemVer.parse(app.version).isOlderThan(SemVer.parse(inst.version))
+          // Up to date, or the seed would be a downgrade → leave the installed bundle alone.
+          if (inst.sha256 === app.sha256 || isDowngrade) continue
+        }
         await this.installBuffer(app, await fs.readFile(tarball), () => true)
       } catch {
         // A bad seed shouldn't block launch; the store can still install from remote.

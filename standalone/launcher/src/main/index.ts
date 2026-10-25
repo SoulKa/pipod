@@ -2,13 +2,15 @@ import { app, shell, BrowserWindow, ipcMain, net, WebContentsView } from 'electr
 import { networkInterfaces } from 'node:os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { AppStore } from './appStore'
+import { LauncherUpdater } from './launcherUpdater'
 import { handlePiappProtocol, registerPiappScheme } from './protocol'
 import { PIAPP_SCHEME } from './config'
 import { loadSettings, saveSettings } from './settings'
-import { HOME_BUTTON_CSS, HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '../shared/constants'
-import type { LauncherSettings, NetworkState, UpdateProgress } from '../shared/types'
+import { HOME_BUTTON_CSS, HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '@shared/constants'
+import type { LauncherSettings, LauncherUpdate, NetworkState, UpdateProgress } from '@shared/types'
 
 // Wireless interface naming: wlan*/wlp* on the Pi (Linux), en0 on macOS laptops (dev).
 const WIFI_INTERFACE = /^(wlan|wlp|wl|wifi|wi-fi|en0)/i
@@ -39,14 +41,27 @@ const DEV_SCALE = is.dev ? 0.5 : 1
 
 /**
  * Dev iteration guard: don't let the on-launch updater pull a remote release bundle over a
- * locally-built app. Active in dev (`yarn dev:launcher`) or when PIPOD_NO_UPDATE=1 is set (e.g. a
- * packaged launcher). The manual App Store "Update" and the bundled seed are unaffected.
+ * locally-built app. Covers app bundles only — the launcher's own update never runs unpackaged
+ * and only ever shows a badge. Active in dev (`yarn dev:launcher`) or when PIPOD_NO_UPDATE=1 is
+ * set (e.g. a packaged launcher). The manual App Store "Update" and the bundled seed are
+ * unaffected.
  */
 function autoUpdateSuppressed(): boolean {
   return is.dev || process.env['PIPOD_NO_UPDATE'] === '1'
 }
 
-const store = new AppStore()
+const LAUNCHER_UPDATE_CHECK_MS = 6 * 60 * 60 * 1000
+
+// Only a packaged launcher carries its release version (CI stamps it from the tag); unpackaged
+// (dev, e2e) it runs the repo's current code and reports package.json's placeholder, so it
+// accepts every bundle.
+const store = new AppStore(app.isPackaged ? app.getVersion() : null)
+// The launcher only updates itself as a packaged AppImage (the Pi build): electron-updater
+// replaces the file $APPIMAGE points at. Anywhere else it reports `unsupported`.
+const launcherUpdater = new LauncherUpdater(
+  app.isPackaged && process.env['APPIMAGE'] ? autoUpdater : null,
+  app.getVersion()
+)
 let mainWindow: BrowserWindow | null = null
 let appView: WebContentsView | null = null
 let homeButton: WebContentsView | null = null
@@ -251,7 +266,13 @@ function registerIpc(): void {
     saveSettings(patch)
   )
 
+  ipcMain.handle('launcher:getLauncherUpdate', () => launcherUpdater.get())
+  ipcMain.handle('launcher:downloadLauncherUpdate', () => launcherUpdater.download())
+
   store.on('progress', (p: UpdateProgress) => mainWindow?.webContents.send('launcher:progress', p))
+  launcherUpdater.on('change', (u: LauncherUpdate) =>
+    mainWindow?.webContents.send('launcher:launcherUpdate', u)
+  )
 }
 
 app.whenReady().then(async () => {
@@ -280,6 +301,9 @@ app.whenReady().then(async () => {
       if (ids.length) mainWindow?.webContents.send('launcher:autoUpdated', ids)
     })
   }
+
+  launcherUpdater.start(LAUNCHER_UPDATE_CHECK_MS)
+  app.on('will-quit', () => launcherUpdater.stop())
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

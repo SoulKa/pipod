@@ -1,8 +1,32 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import type { LauncherSettings } from '../../../shared/types'
+import { computed, onMounted, ref } from 'vue'
+import { canStartLauncherUpdate } from '@shared/launcherUpdate'
+import type { LauncherSettings, LauncherUpdate } from '@shared/types'
 
+const props = defineProps<{ launcherUpdate: LauncherUpdate }>()
 defineEmits<{ home: [] }>()
+
+const updateStatus = computed(() => {
+  const u = props.launcherUpdate
+  switch (u.status) {
+    case 'unsupported':
+      return 'Updates itself only when installed as an AppImage'
+    case 'idle':
+      return 'Up to date'
+    case 'available':
+      return `v${u.version} available`
+    case 'downloading':
+      return `Downloading v${u.version} — ${Math.round(u.percent)}%, then restarting`
+    case 'error':
+      return `Update failed: ${u.message}`
+  }
+  // Unreachable while the switch is exhaustive; satisfies vue/return-in-computed-property.
+  return u satisfies never
+})
+
+function updateLauncher(): void {
+  void window.launcher.downloadLauncherUpdate()
+}
 
 const settings = ref<LauncherSettings>({ autoUpdateOnLaunch: true })
 const saved = ref(false)
@@ -28,6 +52,26 @@ async function save(): Promise<void> {
     </header>
 
     <div class="body">
+      <section class="launcher">
+        <div class="info">
+          <div class="name">piPod launcher v{{ launcherUpdate.current }}</div>
+          <div class="status">{{ updateStatus }}</div>
+        </div>
+        <button
+          v-if="canStartLauncherUpdate(launcherUpdate)"
+          class="primary"
+          @click="updateLauncher"
+        >
+          {{ launcherUpdate.status === 'error' ? 'Retry' : 'Update' }}
+        </button>
+      </section>
+      <progress
+        v-if="launcherUpdate.status === 'downloading'"
+        class="progress"
+        max="100"
+        :value="launcherUpdate.percent"
+      />
+
       <label class="toggle">
         <input v-model="settings.autoUpdateOnLaunch" type="checkbox" />
         <span>Auto-update apps on launch</span>
@@ -67,6 +111,33 @@ async function save(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.launcher {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.launcher .info {
+  flex: 1;
+}
+
+.launcher .name {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.launcher .status {
+  color: var(--accent);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
 }
 
 .toggle {

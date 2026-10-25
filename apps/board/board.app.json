@@ -1,5 +1,6 @@
 {
   "displayName": "Darts Board",
   "description": "Touch-first darts scoreboard",
-  "icon": "icon.svg"
+  "icon": "icon.svg",
+  "launcher": "^1.3.0"
 }
