@@ -6,8 +6,24 @@ import { log } from './logger'
 import { httpOrigin, openInBrowser, publicOrigin } from './network'
 import { startServer } from './server'
 
-const { app, port } = await startServer({ host: env.host, port: env.port })
+const { app, port, close } = await startServer({ host: env.host, port: env.port })
 app.log.info(`piPod server listening on http://${env.host}:${port}`)
+
+// Without handlers the process dies mid-request; under Docker the tsx entrypoint
+// would also leave `docker stop` waiting for its SIGKILL timeout. `once`, so a
+// second Ctrl+C falls back to the default hard exit if closing hangs.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    log.info(`${signal} received, shutting down`)
+    close().then(
+      () => process.exit(0),
+      (err) => {
+        log.error({ err }, 'shutdown failed')
+        process.exit(1)
+      },
+    )
+  })
+}
 
 if (env.consoleDir) {
   const adminUrl = `${httpOrigin('localhost', port)}/admin`
