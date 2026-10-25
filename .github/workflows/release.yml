@@ -18,7 +18,7 @@ jobs:
   release:
     runs-on: ubuntu-24.04-arm # native arm64 → electron-builder emits arm64 launcher artifacts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Full install — the launcher build needs the whole toolchain (electron, electron-builder,
       # the allow-listed electron/node-gyp git dep) alongside @pipod/shared and the store apps.
       - uses: ./.github/actions/setup

@@ -12,7 +12,7 @@ jobs:
   check:
     runs-on: ubuntu-latest # quality gates are arch-independent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Format check
@@ -28,7 +28,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Install Chromium
@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-diagnostics
           path: |
