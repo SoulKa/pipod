@@ -25,6 +25,8 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
 - **`packages/ui`** (`@pipod/ui`) — shared touch-first Vue components: the on-screen keyboard
   (`VirtualKeyboard`) and the `TouchTextInput` field that opens it. There is no hardware keyboard
   on the Pi, so **every text input in every app must use `TouchTextInput`**.
+  It also exports `v-tap-guard` / `guardTaps`, which ignore taps for a moment after an element
+  appears.
 
 ## Commands
 
@@ -210,6 +212,12 @@ newer release-installed bundle on every restart, and the store shows "v1.0.0 →
   components, dark slate/cyan theme. Comments explain **why**, not what; keep the existing density.
 - Board interactions are touchscreen-first: keep comfortable ~44–48px minimum tap targets and use
   the on-screen keyboard for names. Don't shrink tap targets.
+- A tap must not land on what it just made appear (panel bounce, double taps, the launcher tile
+  tap that opened the app). The element that switches a board's screens is keyed per screen and
+  tap-guarded (`v-tap-guard`), so every screen — the first one included — ignores taps briefly
+  as it appears; things that appear inside a screen (result cards, dialogs) use `v-tap-guard`
+  too. Never guard scoring input: fast repeat taps there are real. e2e specs wait for the guard
+  (`waitUntilArmed`) before a deliberate tap.
 - Text entry goes through `TouchTextInput` from `@pipod/ui` — never a bare `<input type="text">`.
   It falls attributes through to the real input, so app-specific classes still apply; because it
   has a fragment root, parent scoped styles must target it with `:deep()`. Retheme the keyboard

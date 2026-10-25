@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { vTapGuard } from '@pipod/ui'
 import { pickClip } from '../effects/celebrationClips'
 import FireworksCanvas from './FireworksCanvas.vue'
 import LemonBurst from './LemonBurst.vue'
@@ -167,7 +168,9 @@ const wowClip = revealsOnTick(
           <p class="modal-sub">Die anderen werfen weiter um den nächsten Platz.</p>
         </template>
 
-        <div class="modal-actions">
+        <!-- The card pops up on the tap that scored the finishing dart; a bounce of that
+             tap must not report the leg or skip the celebration. -->
+        <div v-tap-guard class="modal-actions">
           <button v-if="!isGameOver" class="primary" @click="emit('continue')">
             Weiterspielen
           </button>
@@ -360,6 +363,11 @@ h1 {
   gap: 12px;
   width: 100%;
   margin-top: 8px;
+  transition: opacity 200ms ease-out;
+}
+
+.modal-actions[data-tap-guard] {
+  opacity: 0.45;
 }
 
 .modal-actions button {

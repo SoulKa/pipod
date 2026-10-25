@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { legStarterSeat, type BoardGameSnapshot, type Seat } from '@pipod/shared'
+import { legStarterSeat, type BoardGameSnapshot, type Match, type Seat } from '@pipod/shared'
+import { vTapGuard } from '@pipod/ui'
 import GameScreen from './GameScreen.vue'
+import MatchIntro from './MatchIntro.vue'
 import StarterScreen from './StarterScreen.vue'
 import TournamentBar from './TournamentBar.vue'
 import { useDartGame, type Multiplier } from '../game/useDartGame'
@@ -39,6 +41,11 @@ const legsWon = ref<[number, number]>([0, 0])
 // Seat that throws first in leg 0 of the assigned match. Null while nobody has picked,
 // which is what puts the starter screen in front of the game.
 const firstLegStarter = ref<Seat | null>(null)
+// The match whose "A vs B" intro the players confirmed. Keyed by match rather than a flag,
+// so every newly assigned match gets its intro whichever way the board arrives at it (fresh,
+// or restored from a snapshot the server seeded). Local only, like the starter choice: a
+// board that reloads before a dart is thrown shows it again.
+const introConfirmedFor = ref<string | null>(null)
 // True while a leg report is in flight, so the button can't be tapped twice.
 const reporting = ref(false)
 // Why the last report was refused. Scoped to the report so an older connection
@@ -118,7 +125,8 @@ watch(
       firstLegStarter.value = starterOf(restored)
       restoreSnapshot(restored)
     } else {
-      // Nothing stored for this match yet — ask who throws first before seeding a leg.
+      // Nothing stored for this match yet — introduce it, then ask who throws first
+      // before seeding a leg.
       firstLegStarter.value = null
     }
   },
@@ -130,6 +138,29 @@ function chooseStarter(seat: Seat) {
   if (firstLegStarter.value !== null) return
   firstLegStarter.value = seat
   startLeg()
+}
+
+type BoardScreen = { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match }
+
+// Which screen the board shows. A match is introduced, then its starter picked, then played.
+const screen = computed<BoardScreen>(() => {
+  const match = tour.assignment.value?.match
+  if (!tournamentMode.value || !match) return { kind: 'lobby' }
+  if (firstLegStarter.value !== null) return { kind: 'game', match }
+  return { kind: introConfirmedFor.value === match.id ? 'starter' : 'intro', match }
+})
+
+// Remounts the screen wrapper, and so re-arms its tap guard, on every screen change, each
+// new match and each new leg.
+const screenKey = computed(() => {
+  const current = screen.value
+  return current.kind === 'lobby'
+    ? 'lobby'
+    : `${current.kind}:${current.match.id}:${legIndex.value}`
+})
+
+function confirmIntro() {
+  if (screen.value.kind === 'intro') introConfirmedFor.value = screen.value.match.id
 }
 
 const awaitingTournamentMatch = computed(() => !!tour.floorId.value && !tournamentMode.value)
@@ -206,48 +237,73 @@ async function reportLegAndContinue() {
 </script>
 
 <template>
-  <template v-if="!tournamentMode">
-    <TournamentBar />
-    <section v-if="awaitingTournamentMatch" class="tournament-waiting">
-      <div class="waiting-mark">🎯</div>
-      <h1>Board verbunden</h1>
-      <p>Dieses Board ist bereit für sein zugewiesenes Turniermatch.</p>
-      <p class="waiting-sub">Match und Feld in der Turnier-Konsole auswählen.</p>
-    </section>
-  </template>
-
-  <StarterScreen v-else-if="firstLegStarter === null" :names="seatNames" @select="chooseStarter" />
-
-  <GameScreen
-    v-else
-    :options="options"
-    :players="players"
-    :current-player-index="currentPlayerIndex"
-    :current-throws="currentThrows"
-    :finish-order="finishOrder"
-    :is-game-over="isGameOver"
-    :show-banner="showBanner"
-    :can-undo="canUndo"
-    :checkout-routes="checkoutRoutes"
-    :standings="standings"
-    :banner-index="bannerIndex"
-    :lemon-turns="lemonTurns"
-    :big-darts="bigDarts"
-    :allow-new-game="false"
-    @throw="handleThrow"
-    @undo="undo"
-    @continue="continuePlaying"
-  >
-    <template #result-actions>
-      <button v-if="isGameOver" class="primary" :disabled="reporting" @click="reportLegAndContinue">
-        {{ reporting ? 'Wird gesendet…' : 'Ergebnis an Server melden →︎' }}
-      </button>
-      <p v-if="isGameOver && reportError" class="report-error">{{ reportError }}</p>
+  <!-- Whatever tap brought a screen up (or a bounce of it) must not land on it — including
+       the launcher tile tap that opened the board — so the screen wrapper is keyed per screen
+       and tap-guarded each time it mounts. -->
+  <div :key="screenKey" v-tap-guard class="screen">
+    <template v-if="screen.kind === 'lobby'">
+      <TournamentBar />
+      <section v-if="awaitingTournamentMatch" class="tournament-waiting">
+        <div class="waiting-mark">🎯</div>
+        <h1>Board verbunden</h1>
+        <p>Dieses Board ist bereit für sein zugewiesenes Turniermatch.</p>
+        <p class="waiting-sub">Match und Feld in der Turnier-Konsole auswählen.</p>
+      </section>
     </template>
-  </GameScreen>
+
+    <MatchIntro
+      v-else-if="screen.kind === 'intro'"
+      :names="seatNames"
+      :match="screen.match"
+      @confirm="confirmIntro"
+    />
+
+    <StarterScreen
+      v-else-if="screen.kind === 'starter'"
+      :names="seatNames"
+      @select="chooseStarter"
+    />
+
+    <GameScreen
+      v-else
+      :options="options"
+      :players="players"
+      :current-player-index="currentPlayerIndex"
+      :current-throws="currentThrows"
+      :finish-order="finishOrder"
+      :is-game-over="isGameOver"
+      :show-banner="showBanner"
+      :can-undo="canUndo"
+      :checkout-routes="checkoutRoutes"
+      :standings="standings"
+      :banner-index="bannerIndex"
+      :lemon-turns="lemonTurns"
+      :big-darts="bigDarts"
+      :allow-new-game="false"
+      @throw="handleThrow"
+      @undo="undo"
+      @continue="continuePlaying"
+    >
+      <template #result-actions>
+        <button
+          v-if="isGameOver"
+          class="primary"
+          :disabled="reporting"
+          @click="reportLegAndContinue"
+        >
+          {{ reporting ? 'Wird gesendet…' : 'Ergebnis an Server melden →︎' }}
+        </button>
+        <p v-if="isGameOver && reportError" class="report-error">{{ reportError }}</p>
+      </template>
+    </GameScreen>
+  </div>
 </template>
 
 <style scoped>
+.screen {
+  height: 100%;
+}
+
 .report-error {
   max-width: 520px;
   color: #f87171;

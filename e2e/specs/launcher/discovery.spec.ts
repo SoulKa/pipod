@@ -1,4 +1,5 @@
 import { createTournament, uniqueName } from '../../support/api'
+import { waitUntilArmed } from '../../support/board'
 import { SERVER_PORT } from '../../support/stack'
 import { expect, test } from '../../fixtures/launcher'
 
@@ -14,6 +15,7 @@ test('the tournament board finds the server on the LAN and joins it with a tap',
   const server = board.getByRole('button', { name: `:${SERVER_PORT}` })
   await expect(server.first()).toBeVisible()
 
+  await waitUntilArmed(board)
   await server.first().click()
   await expect(board.getByRole('button', { name: tournament.name })).toBeVisible()
 })

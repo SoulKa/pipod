@@ -1,6 +1,7 @@
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardGameSnapshot, BoardTournamentState, Match } from '@pipod/shared'
+import { TAP_GUARD_MS } from '@pipod/ui'
 
 type Handler = (...args: unknown[]) => void
 
@@ -108,6 +109,17 @@ function finishedLeg(overrides: Partial<BoardTournamentState> = {}): BoardGameSn
   }
 }
 
+/** An untouched first leg of `matchId`, as the server seeds it before anyone has picked. */
+function freshLeg(matchId: string): BoardGameSnapshot {
+  const leg = finishedLeg({ activeMatchId: matchId, firstLegStarter: null })
+  return {
+    ...leg,
+    players: leg.players.map((p) => ({ ...p, score: 301 })),
+    finishOrder: [],
+    bannerIndex: null,
+  }
+}
+
 /** Mount the board and register it on the floor, with no match assigned yet. */
 async function mountBoard() {
   vi.resetModules()
@@ -135,28 +147,181 @@ function starterButtons(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('.choice')
 }
 
+/** Let the tap guard of whatever just appeared run out, as a deliberate tap would. */
+async function waitOutGuard(wrapper: ReturnType<typeof mount>) {
+  // Render first: the guard's clock only starts once the new screen has mounted.
+  await flushPromises()
+  vi.advanceTimersByTime(TAP_GUARD_MS)
+  await flushPromises()
+}
+
+function gameOnButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('button').find((b) => b.text() === 'Game on!')
+}
+
+function reportButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('button').find((b) => b.text().includes('Ergebnis'))
+}
+
+/** Confirm the match intro and land on the starter screen, ready to pick. */
+async function confirmIntro(wrapper: ReturnType<typeof mount>) {
+  await waitOutGuard(wrapper)
+  await gameOnButton(wrapper)!.trigger('click')
+  await waitOutGuard(wrapper)
+}
+
 /** Mount the board, connect it to a fake server, and play into a finished leg. */
 async function mountAtLegEnd() {
   const { wrapper, socket, client } = await mountBoard()
   socket.fire('match:assigned', { match: MATCH, participants: [] })
-  await wrapper.vm.$nextTick()
+  await flushPromises()
   socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
-  await wrapper.vm.$nextTick()
+  await waitOutGuard(wrapper)
 
-  const report = wrapper.findAll('button').find((b) => b.text().includes('Ergebnis'))!
+  const report = reportButton(wrapper)!
   expect(report).toBeDefined()
   return { wrapper, socket, client, report }
 }
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/')
+  // Only timeouts: the tap guards run on them, and nothing here waits on anything else.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('TournamentBoard match intro', () => {
+  it('introduces the assigned match before asking who throws first', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', {
+      match: { ...MATCH, bestOf: 5, startScore: 501, outMode: 'double' },
+      participants: PARTICIPANTS,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Alice')
+    expect(wrapper.text()).toContain('Bob')
+    expect(wrapper.text()).toContain('Best of 5 Legs · 501 · Double-Out')
+    expect(wrapper.text()).not.toContain('Wer beginnt?')
+
+    await confirmIntro(wrapper)
+    expect(wrapper.text()).toContain('Wer beginnt?')
+    expect(socket.events('board:snapshot')).toHaveLength(0)
+  })
+
+  it('introduces the next match even when the server seeded a snapshot for it', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await flushPromises()
+    await confirmIntro(wrapper)
+    await starterButtons(wrapper)[0]!.trigger('click')
+    socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
+    await waitOutGuard(wrapper)
+    const report = reportButton(wrapper)!
+    await report.trigger('click')
+    socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
+    await flushPromises()
+
+    // The server seeds an untouched leg for the next match before the board takes it over.
+    const next: Match = { ...MATCH, id: 'match-2' }
+    socket.fire('board:session', { snapshot: freshLeg(next.id), revision: 2 })
+    socket.fire('match:assigned', { match: next, participants: PARTICIPANTS })
+    await flushPromises()
+
+    expect(gameOnButton(wrapper)).toBeDefined()
+    expect(wrapper.text()).not.toContain('Wer beginnt?')
+  })
+
+  it('skips the intro when resuming a match already underway', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await flushPromises()
+    socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
+    await flushPromises()
+
+    expect(gameOnButton(wrapper)).toBeUndefined()
+    expect(wrapper.text()).toContain('Ergebnis')
+  })
+})
+
+describe('TournamentBoard tap guards', () => {
+  it('ignores the report tap bouncing onto the next match the server swapped in', async () => {
+    const { wrapper, socket, report } = await mountAtLegEnd()
+    const clicked = report.trigger('click')
+    socket.fire('match:assigned', {
+      match: { ...MATCH, id: 'match-2' },
+      participants: PARTICIPANTS,
+    })
+    socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
+    await clicked
+    await flushPromises()
+
+    // The bounce lands right away, before the new screen is armed.
+    await gameOnButton(wrapper)!.trigger('click')
+    expect(gameOnButton(wrapper)).toBeDefined()
+
+    await confirmIntro(wrapper)
+    expect(wrapper.text()).toContain('Wer beginnt?')
+  })
+
+  it('ignores a starter pick that lands as the starter screen appears', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await flushPromises()
+    await waitOutGuard(wrapper)
+    await gameOnButton(wrapper)!.trigger('click')
+    await flushPromises()
+
+    await starterButtons(wrapper)[0]!.trigger('click')
+    expect(socket.events('board:snapshot')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Wer beginnt?')
+  })
+
+  it('ignores the report tap bouncing onto the next leg', async () => {
+    const { wrapper, socket } = await mountBoard()
+    const bestOfThree: Match = { ...MATCH, bestOf: 3 }
+    socket.fire('match:assigned', { match: bestOfThree, participants: PARTICIPANTS })
+    await flushPromises()
+    await confirmIntro(wrapper)
+    await starterButtons(wrapper)[0]!.trigger('click')
+    socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
+    await waitOutGuard(wrapper)
+    await reportButton(wrapper)!.trigger('click')
+    socket.ack('match:legResult', null, { ok: true, match: { ...bestOfThree, legsA: 1 } })
+    await flushPromises()
+
+    const pad20 = () => wrapper.findAll('button').find((b) => b.text() === '20')!
+    const saves = socket.events('board:snapshot').length
+    await pad20().trigger('click')
+    expect(socket.events('board:snapshot')).toHaveLength(saves)
+
+    await waitOutGuard(wrapper)
+    await pad20().trigger('click')
+    expect(socket.events('board:snapshot')).toHaveLength(saves + 1)
+  })
+
+  it('ignores a report tap that lands as the result card appears', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: [] })
+    await flushPromises()
+    socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
+    await flushPromises()
+
+    const report = reportButton(wrapper)!
+    await report.trigger('click')
+    expect(socket.events('match:legResult')).toHaveLength(0)
+  })
 })
 
 describe('TournamentBoard starting player', () => {
   it('asks who throws first instead of starting the assigned match', async () => {
     const { wrapper, socket } = await mountBoard()
     socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
+    await confirmIntro(wrapper)
 
     expect(wrapper.text()).toContain('Wer beginnt?')
     expect(starterButtons(wrapper).map((b) => b.text())).toEqual(['Alice', 'Bob'])
@@ -167,7 +332,8 @@ describe('TournamentBoard starting player', () => {
   it('starts the leg with the chosen seat and records the choice', async () => {
     const { wrapper, socket } = await mountBoard()
     socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
+    await confirmIntro(wrapper)
     await starterButtons(wrapper)[1]!.trigger('click')
 
     const saved = socket.events('board:snapshot').at(-1)!.args[0] as {
@@ -176,6 +342,7 @@ describe('TournamentBoard starting player', () => {
     expect(saved.snapshot.currentPlayerIndex).toBe(1)
     expect(saved.snapshot.tournament?.firstLegStarter).toBe(1)
     expect(saved.snapshot.players.map((p) => p.name)).toEqual(['Alice', 'Bob'])
+    await flushPromises()
     expect(wrapper.text()).not.toContain('Wer beginnt?')
   })
 
@@ -183,7 +350,8 @@ describe('TournamentBoard starting player', () => {
     const { wrapper, socket } = await mountBoard()
     const bestOfThree: Match = { ...MATCH, bestOf: 3 }
     socket.fire('match:assigned', { match: bestOfThree, participants: PARTICIPANTS })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
+    await confirmIntro(wrapper)
     await starterButtons(wrapper)[1]!.trigger('click')
 
     // Seat 1 started leg 0 and seat 0 won it; leg 1 goes back to seat 0.
@@ -191,12 +359,11 @@ describe('TournamentBoard starting player', () => {
       snapshot: finishedLeg({ firstLegStarter: 1 }),
       revision: 1,
     })
-    await wrapper.vm.$nextTick()
-    const report = wrapper.findAll('button').find((b) => b.text().includes('Ergebnis'))!
+    await waitOutGuard(wrapper)
+    const report = reportButton(wrapper)!
     await report.trigger('click')
     socket.ack('match:legResult', null, { ok: true, match: { ...bestOfThree, legsA: 1 } })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     const saved = socket.events('board:snapshot').at(-1)!.args[0] as {
       snapshot: BoardGameSnapshot
@@ -210,12 +377,12 @@ describe('TournamentBoard starting player', () => {
   it('does not interrupt a leg that is already underway without a stored choice', async () => {
     const { wrapper, socket } = await mountBoard()
     socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
     socket.fire('board:session', {
       snapshot: finishedLeg({ firstLegStarter: null }),
       revision: 1,
     })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(wrapper.text()).not.toContain('Wer beginnt?')
     expect(wrapper.text()).toContain('Ergebnis')
@@ -223,20 +390,17 @@ describe('TournamentBoard starting player', () => {
 
   it('asks again once the match is over', async () => {
     const { wrapper, socket, client } = await mountAtLegEnd()
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Ergebnis'))!
-      .trigger('click')
+    await reportButton(wrapper)!.trigger('click')
     socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(client.assignment.value).toBeNull()
     socket.fire('match:assigned', {
       match: { ...MATCH, id: 'match-2' },
       participants: PARTICIPANTS,
     })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
+    await confirmIntro(wrapper)
     expect(wrapper.text()).toContain('Wer beginnt?')
   })
 })
@@ -257,7 +421,7 @@ describe('TournamentBoard leg reporting', () => {
   it('does not present an older connection error as a failed report', async () => {
     const { wrapper, client, report } = await mountAtLegEnd()
     client.errorMsg.value = 'snapshot revision conflict'
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(wrapper.text()).not.toContain('snapshot revision conflict')
     expect(report.text()).toContain('Ergebnis')
@@ -267,11 +431,10 @@ describe('TournamentBoard leg reporting', () => {
     const { wrapper, socket, report } = await mountAtLegEnd()
     await report.trigger('click')
     socket.ack('match:legResult', null, { ok: false, message: 'not assigned' })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(wrapper.text()).toContain('not assigned')
-    const retry = wrapper.findAll('button').find((b) => b.text().includes('Ergebnis'))
+    const retry = reportButton(wrapper)
     expect(retry).toBeDefined()
   })
 
@@ -281,8 +444,7 @@ describe('TournamentBoard leg reporting', () => {
     expect(wrapper.text()).not.toContain('Board verbunden')
 
     socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(client.assignment.value).toBeNull()
     expect(wrapper.text()).toContain('Board verbunden')
@@ -298,7 +460,7 @@ describe('TournamentBoard leg reporting', () => {
     socket.fire('match:assigned', { match: nextMatch, participants: [] })
     socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
     await clicked
-    await wrapper.vm.$nextTick()
+    await flushPromises()
 
     expect(client.assignment.value?.match.id).toBe('match-2')
     expect(wrapper.text()).not.toContain('Board verbunden')

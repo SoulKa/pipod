@@ -1,10 +1,13 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { uniqueName } from '../../support/api'
+import { waitUntilArmed } from '../../support/board'
 import { BOARD_URL } from '../../support/stack'
 
 // The whole tournament through the real UIs: set up and started in the admin console, every
 // leg scored by tapping on a board, followed on the viewer. The results are scripted, so the
-// test can say exactly how the table, the bracket and the champion must come out.
+// test can say exactly how the table, the bracket and the champion must come out. Every tap
+// that changes the board's screen bounces (see `bouncyTap`), so a bounce that got through —
+// a skipped intro, a starter picked for the players, a stray dart — breaks the script.
 const PLAYERS = ['Anna', 'Ben', 'Cem']
 
 /**
@@ -113,6 +116,7 @@ async function submit(field: Locator, value: string): Promise<void> {
 /** Join the floor by typing the server IP — a plain browser has no launcher to search the LAN. */
 async function joinFloor(board: Page, tournament: string, floor: string): Promise<void> {
   await board.goto(`${BOARD_URL}/?mode=tournament`)
+  await waitUntilArmed(board)
   for (const key of '127.0.0.1') await board.getByRole('button', { name: key, exact: true }).click()
   await board.getByRole('button', { name: 'Verbinden' }).click()
   await board.getByRole('button', { name: tournament }).click()
@@ -128,11 +132,12 @@ async function playMatch(
   viewer: Page,
   legWinners: (pair: string) => string[],
 ): Promise<string> {
+  await bouncyTap(board, board.getByRole('button', { name: 'Game on!' }))
   await expect(board.getByRole('heading', { name: 'Wer beginnt?' })).toBeVisible()
   const seats = (await board.locator('.starter .choice').allTextContents()).map((s) => s.trim())
   const pair = [...seats].sort().join(' ')
   // Seat 0 throws first in the first leg; the board alternates the throw from there.
-  await board.locator('.starter .choice').first().click()
+  await bouncyTap(board, board.locator('.starter .choice').first())
 
   // The viewer shows the match live as soon as the board starts scoring it.
   await expect(viewer.locator('.live-card').getByText(seats[0]!)).toBeVisible()
@@ -141,11 +146,28 @@ async function playMatch(
   const winners = legWinners(pair)
   for (const [leg, winner] of winners.entries()) {
     await playLeg(board, seats[leg % 2] === winner)
-    await report.click()
     // The next leg (or the next match) starts once the server has acknowledged this one.
-    await expect(report).toBeHidden()
+    await bouncyTap(board, report)
   }
   return pair
+}
+
+/**
+ * Tap a button that changes the board's screen, then tap the same spot again the moment the
+ * next screen is in the page — a bouncing touch panel or a reflexive double tap at its worst.
+ * The bounce is a raw mouse click, so unlike a locator click it doesn't wait for the new
+ * screen to accept input. A bounce that lands shows up as a broken script, not here.
+ */
+async function bouncyTap(board: Page, button: Locator): Promise<void> {
+  await waitUntilArmed(board)
+  await button.click({ trial: true })
+  const box = (await button.boundingBox())!
+  // The board's screen wrapper is replaced on every screen change. Track the element itself —
+  // the report button merely relabels itself while in flight.
+  const current = await board.locator('.screen').elementHandle()
+  await button.click()
+  await board.waitForFunction((el) => !el?.isConnected, current)
+  await board.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
 }
 
 /**
@@ -154,6 +176,7 @@ async function playMatch(
  * clip over the pad, so the legs stick to T19s.
  */
 async function playLeg(board: Page, starterWins: boolean): Promise<void> {
+  await waitUntilArmed(board)
   const tap = (key: string) => board.getByRole('button', { name: key, exact: true }).click()
   const triple19 = async () => {
     await tap('Triple')
