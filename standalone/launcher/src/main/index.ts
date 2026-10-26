@@ -31,6 +31,13 @@ function getNetworkState(): NetworkState {
   return { online, wifi }
 }
 
+// The kiosk session may start the launcher with unusable stdio, and a failed write to it is
+// emitted as an 'error' event — unhandled, that's an uncaught exception whose modal dialog blocks
+// the main process. electron-updater's AppImage install pipes `mv`'s stderr to ours right before
+// it quits, so this left the old launcher running underneath the updated one. Console calls
+// already ignore such errors; this covers direct stream writes. (Can't log here: it'd recurse.)
+for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {})
+
 // Serve installed app bundles over piapp://. Must be registered before app 'ready'.
 registerPiappScheme()
 
