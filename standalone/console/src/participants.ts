@@ -5,8 +5,6 @@ import type { Participant } from '@pipod/shared'
 
 export interface Participants {
   participant: (id: string | null) => Participant | undefined
-  /** A player's name, or a dash for a seat nobody holds yet. */
-  nameOf: (id: string | null) => string
 }
 
 export const participantsKey: InjectionKey<Participants> = Symbol('participants')

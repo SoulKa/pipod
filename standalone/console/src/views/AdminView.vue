@@ -96,10 +96,13 @@ watch(
     try {
       await feed.open(id)
     } catch (e) {
+      // Already moved on to another tournament: this one's failure is no longer news.
+      if (selectedId.value !== id) return
       error.value = (e as Error).message
       await router.replace({ name: 'admin' })
       return
     }
+    if (selectedId.value !== id) return
     if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
   },
   { immediate: true },

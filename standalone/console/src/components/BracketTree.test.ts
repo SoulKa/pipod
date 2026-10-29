@@ -57,12 +57,7 @@ function mountTree(matches: Match[], live = new Map<string, LiveMatchState>()) {
     props: { matches, live },
     global: {
       stubs: { RouterLink: RouterLinkStub },
-      provide: {
-        [participantsKey]: {
-          participant: participantOf,
-          nameOf: (id: string | null) => participantOf(id)?.name ?? '—',
-        },
-      },
+      provide: { [participantsKey]: { participant: participantOf } },
     },
   })
 }

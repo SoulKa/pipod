@@ -204,4 +204,17 @@ describe('AdminView phase setup', () => {
     expect(replace).toHaveBeenCalledWith({ name: 'admin' })
     expect(view.find('.error').text()).toBe('not found')
   })
+
+  it('ignores a failed load of a tournament the admin already left', async () => {
+    let failFirst!: (reason: Error) => void
+    openSpy.mockImplementationOnce(() => new Promise((_, reject) => (failFirst = reject)))
+    const view = await mountAdmin('setup', 'setup')
+    await view.setProps({ id: 't2' })
+
+    failFirst(new Error('not found'))
+    await flushPromises()
+
+    expect(replace).not.toHaveBeenCalled()
+    expect(view.find('.error').exists()).toBe(false)
+  })
 })
