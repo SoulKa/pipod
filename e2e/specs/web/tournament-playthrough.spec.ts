@@ -89,7 +89,8 @@ test('a tournament set up in the console is played to its champion on a board', 
   // Only group matches are completed yet — the final is live at most — so this is the
   // group table: two points per win.
   const rows = viewer.locator('.standings-panel tbody tr')
-  await expect(rows.locator('td:first-child')).toHaveText(TABLE)
+  // The name only: the cell also holds the player's avatar (initials, here).
+  await expect(rows.locator('td:first-child .name')).toHaveText(TABLE)
   await expect(rows.locator('td.points')).toHaveText(['4', '2', '0'])
 
   // The last group result drew the final from that table on its own: first against second.
@@ -103,7 +104,9 @@ test('a tournament set up in the console is played to its champion on a board', 
   await expect(viewer.locator('.completed-chip')).toContainText(`Sieger: ${CHAMPION}`)
   await expect(viewer.getByText('Turnier beendet.')).toBeVisible()
   await expect(admin.getByText('Alle geplanten Matches sind abgeschlossen.')).toBeVisible()
-  await expect(board.getByRole('heading', { name: 'Board verbunden' })).toBeVisible()
+  // A finished tournament takes no more boards: re-registering after the final is refused,
+  // so the board falls back to the join wizard and says why.
+  await expect(board.getByText('this tournament is over')).toBeVisible()
 
   await boardContext.close()
 })
@@ -159,6 +162,9 @@ async function playMatch(
  * screen to accept input. A bounce that lands shows up as a broken script, not here.
  */
 async function bouncyTap(board: Page, button: Locator): Promise<void> {
+  // The button's screen may still be on its way in (a dispatched match arrives whenever the
+  // server sends it); checking the guard before it exists would pass on the previous screen.
+  await button.waitFor()
   await waitUntilArmed(board)
   await button.click({ trial: true })
   const box = (await button.boundingBox())!

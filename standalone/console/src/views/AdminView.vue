@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { isOpenTournament, type Tournament, type TournamentStatus } from '@pipod/shared'
+import { PlayerAvatar } from '@pipod/ui'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
 import { usePhaseForm } from '../phaseForm'
@@ -19,10 +21,14 @@ const STATUS_LABELS: Record<TournamentStatus, string> = {
 }
 const statusLabel = (status: TournamentStatus) => STATUS_LABELS[status] ?? status
 
+/** The tournament open in the console comes from the URL, so reloads and links keep it. */
+const props = defineProps<{ id?: string }>()
+
+const router = useRouter()
 const tournaments = ref<Tournament[]>([])
 const feed = useTournamentFeed()
-const { detail, live } = feed
-const selectedId = ref<string | null>(null)
+const { detail, live, nameOf } = feed
+const selectedId = computed(() => props.id ?? null)
 const activeTab = ref<AdminTab>('setup')
 const error = ref('')
 const confirming = ref<null | 'cancel' | 'delete'>(null)
@@ -71,17 +77,37 @@ watch(
   { deep: true },
 )
 
-async function select(id: string) {
-  selectedId.value = id
-  feed.close()
-  await feed.open(id)
-  if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
+function select(id: string): Promise<unknown> {
+  return router.push({ name: 'admin', params: { id } })
 }
 
-const nameOf = computed(() => {
-  const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p.name]))
-  return (id: string | null) => (id ? (map.get(id) ?? '—') : '—')
-})
+// Any URL can name a tournament — a bookmark, a typo, one deleted in another tab — so a
+// failed open says why and falls back to the list. Not through `run()`: that clears the
+// error, and the fallback navigation re-runs this watcher.
+watch(
+  selectedId,
+  async (id) => {
+    feed.close()
+    if (!id) {
+      detail.value = null
+      return
+    }
+    error.value = ''
+    try {
+      await feed.open(id)
+    } catch (e) {
+      // Already moved on to another tournament: this one's failure is no longer news.
+      if (selectedId.value !== id) return
+      error.value = (e as Error).message
+      await router.replace({ name: 'admin' })
+      return
+    }
+    if (selectedId.value !== id) return
+    if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
+  },
+  { immediate: true },
+)
+
 const floorNameOf = computed(() => {
   const map = new Map((detail.value?.floors ?? []).map((floor) => [floor.id, floor.name]))
   return (id: string | null) => (id ? (map.get(id) ?? '—') : 'Nicht zugewiesen')
@@ -148,9 +174,7 @@ async function deleteTournament() {
   if (!id) return
   await run(async () => {
     await api.deleteTournament(id)
-    feed.close()
-    detail.value = null
-    selectedId.value = null
+    await router.push({ name: 'admin' })
     await loadTournaments()
   })
 }
@@ -194,6 +218,18 @@ async function removeFloor(id: string) {
 async function removeParticipant(id: string) {
   await run(async () => {
     await api.deleteParticipant(id)
+    await feed.refresh()
+  })
+}
+
+/**
+ * Players set their own pictures from the viewer; the admin can only take one down. The
+ * refresh follows this view's convention of reloading after its own changes rather than
+ * waiting for the broadcast.
+ */
+async function removeAvatar(id: string) {
+  await run(async () => {
+    await api.clearAvatar(id)
     await feed.refresh()
   })
 }
@@ -348,11 +384,23 @@ onUnmounted(() => feed.close())
             </div>
             <ul v-if="detail.participants.length" class="players">
               <li v-for="participant in detail.participants" :key="participant.id">
-                <span>{{ participant.name }}</span>
+                <PlayerAvatar :participant="participant" :size="28" />
+                <span class="player-name">{{ participant.name }}</span>
                 <span v-if="participant.seed" class="pd-muted"
                   >Setzplatz {{ participant.seed }}</span
                 >
                 <button
+                  v-if="participant.avatar"
+                  class="remove-button"
+                  title="Profilbild entfernen"
+                  aria-label="Profilbild entfernen"
+                  @click="removeAvatar(participant.id)"
+                >
+                  🚫
+                </button>
+                <!-- Players the drawn schedule references can't be removed (the server refuses). -->
+                <button
+                  v-if="!phasesLocked"
                   class="remove-button"
                   aria-label="Spieler entfernen"
                   @click="removeParticipant(participant.id)"
@@ -889,7 +937,7 @@ onUnmounted(() => feed.close())
   background: var(--pd-surface-sunken);
 }
 
-.players li span:first-child {
+.player-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

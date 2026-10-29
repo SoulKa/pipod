@@ -2,10 +2,10 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { LiveMatchState, Match } from '@pipod/shared'
 import { activeRoundIndex, buildBracketRounds, championOf } from '../bracket'
+import PlayerTag from './PlayerTag.vue'
 
 const props = defineProps<{
   matches: Match[]
-  nameOf: (id: string | null) => string
   live: Map<string, LiveMatchState>
 }>()
 
@@ -81,11 +81,11 @@ watch(activeIndex, scrollToActive)
               <div v-for="m in row.matches" :key="m.id" class="cell">
                 <article class="match" :class="{ 'match--live': m.status === 'live' }">
                   <div class="side" :class="{ win: isWinner(m, m.participantAId) }">
-                    <span class="pname">{{ nameOf(m.participantAId) }}</span>
+                    <PlayerTag class="pname" :id="m.participantAId" :size="20" />
                     <span class="legs">{{ legsOf(m).a }}</span>
                   </div>
                   <div class="side" :class="{ win: isWinner(m, m.participantBId) }">
-                    <span class="pname">{{ nameOf(m.participantBId) }}</span>
+                    <PlayerTag class="pname" :id="m.participantBId" :size="20" />
                     <span class="legs">{{ legsOf(m).b }}</span>
                   </div>
                 </article>
@@ -111,7 +111,7 @@ watch(activeIndex, scrollToActive)
 
     <p v-if="champion" class="champion">
       <span class="champion-label">🏆 Sieger</span>
-      <strong class="champion-name">{{ nameOf(champion) }}</strong>
+      <PlayerTag class="champion-name" :id="champion" :size="40" />
     </p>
   </div>
 </template>
@@ -185,6 +185,7 @@ watch(activeIndex, scrollToActive)
 }
 
 .pname {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

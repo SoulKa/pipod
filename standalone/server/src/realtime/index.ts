@@ -6,6 +6,8 @@ import type {
   Floor,
   Match,
   Seat,
+  MatchSeats,
+  SeatPlayer,
   ServerToClientEvents,
   SocketData,
 } from '@pipod/shared'
@@ -261,12 +263,12 @@ export function dispatchFloorMatch(match: Match): Match | null {
   if (!ioServer || !match.floorId) return null
   const room = floorRoomFor(match.tournamentId, match.floorId)
   if ((ioServer.sockets.adapter.rooms.get(room)?.size ?? 0) !== 1) return null
-  const liveMatch = dispatchMatch(match.id, match.floorId)
-  const floorId = liveMatch.floorId
-  if (!floorId) return null
-  const floor = repo.getFloor(floorId)
+  // Everything the board needs is gathered before the match goes live: a match marked
+  // live without a board would hold its floor as busy for good.
+  const floor = repo.getFloor(match.floorId)
   if (!floor) return null
-  const participants = participantsFor(liveMatch)
+  const participants = participantsFor(match)
+  const liveMatch = dispatchMatch(match.id, floor.id)
   const snapshot = createMatchSnapshot(liveMatch, participants)
   const session = initializeFloorSession(floor, liveMatch, snapshot)
   // Session first: a board starts its leg as soon as it is assigned and stamps that
@@ -302,11 +304,15 @@ export function dispatchReadyFloors(tournamentId: string): void {
   for (const floor of repo.listFloors(tournamentId)) dispatchQueuedFloorMatch(floor.id)
 }
 
-function participantsFor(match: Match): { id: string; name: string }[] {
-  const names = new Map(repo.listParticipants(match.tournamentId).map((p) => [p.id, p.name]))
-  return [match.participantAId, match.participantBId]
-    .filter((id): id is string => !!id)
-    .map((id) => ({ id, name: names.get(id) ?? 'Unknown' }))
+/** The match's two players in seat order; throws for a match a board can't be handed. */
+function participantsFor(match: Match): MatchSeats {
+  const byId = new Map(repo.listParticipants(match.tournamentId).map((p) => [p.id, p]))
+  const seat = (id: string | null): SeatPlayer => {
+    const participant = id ? byId.get(id) : undefined
+    if (!participant) throw new Error(`match ${match.id} is missing a player`)
+    return { id: participant.id, name: participant.name, avatar: participant.avatar }
+  }
+  return [seat(match.participantAId), seat(match.participantBId)]
 }
 
 function createAssignmentSnapshot(match: Match, firstLegStarter: Seat | null): BoardGameSnapshot {

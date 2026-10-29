@@ -44,8 +44,8 @@ function match(over: Partial<Match> = {}): Match {
 
 const floor: Floor = { id: 'f1', tournamentId: 't1', name: 'Field 1' }
 const participants: Participant[] = [
-  { id: 'pA', tournamentId: 't1', name: 'Alice', seed: null },
-  { id: 'pB', tournamentId: 't1', name: 'Bob', seed: null },
+  { id: 'pA', tournamentId: 't1', name: 'Alice', seed: null, avatar: null },
+  { id: 'pB', tournamentId: 't1', name: 'Bob', seed: null, avatar: null },
 ]
 
 function detail(over: Partial<TournamentDetail> = {}): TournamentDetail {

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Match } from '@pipod/shared'
+import type { Match, MatchSeats } from '@pipod/shared'
+import { PlayerAvatar } from '@pipod/ui'
 
 const props = defineProps<{
-  names: [string, string]
+  players: MatchSeats
   match: Pick<Match, 'bestOf' | 'startScore' | 'outMode'>
+  /** Server origin the players' photos are fetched from. */
+  serverUrl: string
 }>()
 
 const emit = defineEmits<{ confirm: [] }>()
@@ -25,12 +28,28 @@ const details = computed(() => {
     </header>
 
     <div class="matchup">
-      <div class="plate plate-a">{{ names[0] }}</div>
+      <div class="plate plate-a">
+        <PlayerAvatar
+          class="seat-avatar"
+          :participant="players[0]"
+          :origin="serverUrl"
+          :size="144"
+        />
+        <span class="name">{{ players[0].name }}</span>
+      </div>
       <div class="vs">
         <span class="ring" />
         <span class="vs-text">VS</span>
       </div>
-      <div class="plate plate-b">{{ names[1] }}</div>
+      <div class="plate plate-b">
+        <PlayerAvatar
+          class="seat-avatar"
+          :participant="players[1]"
+          :origin="serverUrl"
+          :size="144"
+        />
+        <span class="name">{{ players[1].name }}</span>
+      </div>
     </div>
 
     <button class="game-on" @click="emit('confirm')">Game on!</button>
@@ -77,16 +96,28 @@ header {
 
 .plate {
   --accent: #22d3ee;
-  padding: 36px 28px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 28px 28px;
   border-radius: 24px;
   border: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, #0b1220);
   color: #f8fafc;
   font-size: 52px;
   font-weight: 900;
+  box-shadow: 0 0 40px -12px var(--accent);
+}
+
+.seat-avatar {
+  border: 4px solid var(--accent);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
   text-align: center;
   overflow-wrap: anywhere;
-  box-shadow: 0 0 40px -12px var(--accent);
 }
 
 /* The two players walk on from opposite sides, then the VS lands between them. */

@@ -17,6 +17,7 @@ import {
   groups,
   legs,
   matches,
+  participantPhotos,
   participants,
   stages,
   tournaments,
@@ -45,6 +46,18 @@ export const repo = {
 
   listParticipants(tournamentId: string): Participant[] {
     return db.select().from(participants).where(eq(participants.tournamentId, tournamentId)).all()
+  },
+
+  getParticipant(id: string): Participant | undefined {
+    return db.select().from(participants).where(eq(participants.id, id)).get()
+  },
+
+  getParticipantPhoto(participantId: string): Buffer | undefined {
+    return db
+      .select({ data: participantPhotos.data })
+      .from(participantPhotos)
+      .where(eq(participantPhotos.participantId, participantId))
+      .get()?.data
   },
 
   getFloor(id: string): Floor | undefined {

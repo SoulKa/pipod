@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BoardGameSnapshot, BoardTournamentState, Match } from '@pipod/shared'
+import type { BoardGameSnapshot, BoardTournamentState, Match, MatchSeats } from '@pipod/shared'
 import { TAP_GUARD_MS } from '@pipod/ui'
 
 type Handler = (...args: unknown[]) => void
@@ -78,9 +78,9 @@ const MATCH: Match = {
   nextSlot: null,
 }
 
-const PARTICIPANTS = [
-  { id: 'pa', name: 'Alice' },
-  { id: 'pb', name: 'Bob' },
+const PARTICIPANTS: MatchSeats = [
+  { id: 'pa', name: 'Alice', avatar: null },
+  { id: 'pb', name: 'Bob', avatar: null },
 ]
 
 /** A snapshot of a leg in which seat 0 has just checked out. */
@@ -173,7 +173,7 @@ async function confirmIntro(wrapper: ReturnType<typeof mount>) {
 /** Mount the board, connect it to a fake server, and play into a finished leg. */
 async function mountAtLegEnd() {
   const { wrapper, socket, client } = await mountBoard()
-  socket.fire('match:assigned', { match: MATCH, participants: [] })
+  socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
   await flushPromises()
   socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
   await waitOutGuard(wrapper)
@@ -210,6 +210,42 @@ describe('TournamentBoard match intro', () => {
     await confirmIntro(wrapper)
     expect(wrapper.text()).toContain('Wer beginnt?')
     expect(socket.events('board:snapshot')).toHaveLength(0)
+  })
+
+  it("shows each player's picture, or their initials without one", async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', {
+      match: MATCH,
+      participants: [
+        { id: 'pa', name: 'Alice', avatar: { kind: 'photo', version: 'abc123' } },
+        { id: 'pb', name: 'Bob', avatar: null },
+      ],
+    })
+    await flushPromises()
+
+    const plates = wrapper.findAll('.plate')
+    expect(plates[0]!.find('img').attributes('src')).toBe(
+      'http://192.168.0.5:3000/api/participants/pa/avatar?v=abc123',
+    )
+    expect(plates[1]!.find('.initials').text()).toBe('B')
+  })
+
+  it('swaps in a picture changed while the intro is up, without restarting the match', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await flushPromises()
+
+    socket.fire('participant:updated', {
+      id: 'pb',
+      tournamentId: MATCH.tournamentId,
+      name: 'Bob',
+      seed: null,
+      avatar: { kind: 'emoji', emoji: '🦈' },
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('.plate')[1]!.find('.emoji').text()).toBe('🦈')
+    expect(wrapper.text()).toContain('Nächstes Match')
   })
 
   it('introduces the next match even when the server seeded a snapshot for it', async () => {
@@ -305,7 +341,7 @@ describe('TournamentBoard tap guards', () => {
 
   it('ignores a report tap that lands as the result card appears', async () => {
     const { wrapper, socket } = await mountBoard()
-    socket.fire('match:assigned', { match: MATCH, participants: [] })
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
     await flushPromises()
     socket.fire('board:session', { snapshot: finishedLeg(), revision: 1 })
     await flushPromises()
@@ -457,7 +493,7 @@ describe('TournamentBoard leg reporting', () => {
 
     // The finished match frees the floor, so the server dispatches the next one
     // before it acknowledges the leg.
-    socket.fire('match:assigned', { match: nextMatch, participants: [] })
+    socket.fire('match:assigned', { match: nextMatch, participants: PARTICIPANTS })
     socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
     await clicked
     await flushPromises()

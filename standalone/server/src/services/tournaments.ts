@@ -1,7 +1,7 @@
 // Tournament orchestration: CRUD for tournaments/participants/phases and the
 // schedule/bracket generation that turns a phase into concrete matches.
 import { nanoid } from 'nanoid'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, or } from 'drizzle-orm'
 import type {
   ConfigurePhasesInput,
   Floor,
@@ -65,7 +65,10 @@ export function reactivateTournament(id: string): Tournament {
   return { ...tournament, status }
 }
 
-/** Permanently delete a tournament and every row that hangs off it (no FK cascades). */
+/**
+ * Permanently delete a tournament and every row that hangs off it. Only participant photos
+ * cascade; everything else is deleted by hand.
+ */
 export function deleteTournament(id: string): void {
   const tournament = repo.getTournament(id)
   if (!tournament) throw new Error('tournament not found')
@@ -91,6 +94,7 @@ export function deleteTournament(id: string): void {
   db.delete(stages).where(eq(stages.tournamentId, id)).run()
   db.delete(floorSessions).where(eq(floorSessions.tournamentId, id)).run()
   db.delete(floors).where(eq(floors.tournamentId, id)).run()
+  // Their photos go with them (ON DELETE CASCADE).
   db.delete(participants).where(eq(participants.tournamentId, id)).run()
   db.delete(tournaments).where(eq(tournaments.id, id)).run()
   // Unrecoverable, so it is worth a warn: this is the line that explains a tournament
@@ -124,21 +128,40 @@ export function addParticipant(
   name: string,
   seed: number | null,
 ): Participant {
-  const row: Participant = { id: nanoid(), tournamentId, name, seed }
+  const row: Participant = { id: nanoid(), tournamentId, name, seed, avatar: null }
   db.insert(participants).values(row).run()
   log.debug({ tournament: tournamentId, participant: name, seed }, 'participant added')
   return row
 }
 
+/** Undefined for an unknown participant. */
 export function updateParticipant(
   id: string,
   patch: Partial<Pick<Participant, 'name' | 'seed'>>,
-): void {
+): Participant | undefined {
   db.update(participants).set(patch).where(eq(participants.id, id)).run()
   log.debug({ participant: id, ...patch }, 'participant updated')
+  return repo.getParticipant(id)
 }
 
+/** Why a participant can't be removed; the route answers it as a client error. */
+export class ParticipantInMatchError extends Error {
+  constructor() {
+    super('cannot remove a participant who is in a match')
+  }
+}
+
+/**
+ * Only before the schedule references them: a match is handed to a board with both of its
+ * players, so a player may never vanish from a drawn match. Their photo goes with them.
+ */
 export function deleteParticipant(id: string): void {
+  const inMatch = db
+    .select({ id: matches.id })
+    .from(matches)
+    .where(or(eq(matches.participantAId, id), eq(matches.participantBId, id)))
+    .get()
+  if (inMatch) throw new ParticipantInMatchError()
   db.delete(participants).where(eq(participants.id, id)).run()
   log.debug({ participant: id }, 'participant removed')
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, RouterLinkStub } from '@vue/test-utils'
 import { ref } from 'vue'
 import type {
   LiveMatchState,
@@ -20,6 +20,8 @@ vi.mock('../feed', () => ({
     open: vi.fn(),
     close: vi.fn(),
     refresh: vi.fn(),
+    participant: (id: string | null) => detail.value?.participants.find((p) => p.id === id),
+    nameOf: (id: string | null) => detail.value?.participants.find((p) => p.id === id)?.name ?? '—',
   }),
 }))
 
@@ -64,8 +66,8 @@ function setDetail(status: TournamentStatus, stages: Stage[], matches: Match[]):
     tournament: { id: 't1', name: 'Cup', status, autoAssign: false, createdAt: 'now' },
     floors: [],
     participants: [
-      { id: 'pA', tournamentId: 't1', name: 'Anna', seed: 1 },
-      { id: 'pB', tournamentId: 't1', name: 'Ben', seed: 2 },
+      { id: 'pA', tournamentId: 't1', name: 'Anna', seed: 1, avatar: null },
+      { id: 'pB', tournamentId: 't1', name: 'Ben', seed: 2, avatar: null },
     ],
     stages,
     matches,
@@ -146,5 +148,21 @@ describe('OverviewView', () => {
     const headings = view.findAll('.stage-card h3').map((h) => h.text())
     expect(headings).toEqual(['Gruppenphase', 'K.-o.-Phase'])
     expect(view.text()).toContain('Wird nach der Gruppenphase aus der Tabelle ausgelost.')
+  })
+
+  it('links every player to their profile so they can set a picture', () => {
+    setDetail('active', [stage()], [])
+    const view = mount(OverviewView, {
+      props: { id: 't1' },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+
+    const links = view
+      .findAllComponents(RouterLinkStub)
+      .filter((link) => link.element.closest('.player-grid'))
+    expect(links.map((link) => link.props('to'))).toEqual([
+      { name: 'player', params: { id: 't1', participantId: 'pA' } },
+      { name: 'player', params: { id: 't1', participantId: 'pB' } },
+    ])
   })
 })

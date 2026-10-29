@@ -25,7 +25,13 @@ class FakeSocket {
 }
 
 let socket: FakeSocket
-vi.mock('./socket', () => ({ createSocket: () => socket }))
+let socketsCreated = 0
+vi.mock('./socket', () => ({
+  createSocket: () => {
+    socketsCreated++
+    return socket
+  },
+}))
 
 import { useTournamentFeed } from './feed'
 
@@ -67,6 +73,7 @@ function detail(matches: Match[]): TournamentDetail {
 
 beforeEach(() => {
   socket = new FakeSocket()
+  socketsCreated = 0
   getTournament.mockReset()
 })
 
@@ -84,6 +91,25 @@ describe('useTournamentFeed.open', () => {
     socket.fire('connect')
     expect(feed.connected.value).toBe(true)
     expect(socket.emit).toHaveBeenCalledWith('tournament:subscribe', { tournamentId: 't1' })
+  })
+
+  it('drops a tournament the admin already switched away from', async () => {
+    // A's detail is still loading when the admin moves on to B.
+    let finishA!: (value: TournamentDetail) => void
+    getTournament.mockImplementation((id) =>
+      id === 'A' ? new Promise((resolve) => (finishA = resolve)) : Promise.resolve(detail([])),
+    )
+    const feed = useTournamentFeed()
+    const openingA = feed.open('A')
+    feed.close()
+    await feed.open('B')
+
+    finishA(detail([match('from-A')]))
+    await openingA
+
+    // A neither overwrites B's detail nor opens a socket of its own.
+    expect(feed.detail.value?.matches).toEqual([])
+    expect(socketsCreated).toBe(1)
   })
 
   it('clears connected on disconnect', async () => {

@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import type {
   LiveMatchState,
+  Match,
   Participant,
   Stage,
   Tournament,
@@ -30,6 +31,8 @@ vi.mock('../feed', () => ({
     open: openSpy,
     close: vi.fn(),
     refresh: vi.fn(),
+    participant: (id: string | null) => detail.value?.participants.find((p) => p.id === id),
+    nameOf: (id: string | null) => detail.value?.participants.find((p) => p.id === id)?.name ?? '—',
   }),
 }))
 
@@ -41,17 +44,21 @@ vi.mock('../api', () => ({
   },
 }))
 
+const push = vi.fn()
+const replace = vi.fn()
+vi.mock('vue-router', () => ({ useRouter: () => ({ push, replace }) }))
+
 import { api } from '../api'
 import AdminView from './AdminView.vue'
 
 const players: Participant[] = [
-  { id: 'pA', tournamentId: 't1', name: 'Anna', seed: null },
-  { id: 'pB', tournamentId: 't1', name: 'Ben', seed: null },
+  { id: 'pA', tournamentId: 't1', name: 'Anna', seed: null, avatar: null },
+  { id: 'pB', tournamentId: 't1', name: 'Ben', seed: null, avatar: null },
 ]
 
 function setDetail(
   status: TournamentStatus,
-  over: Partial<Pick<TournamentDetail, 'participants' | 'stages'>> = {},
+  over: Partial<Pick<TournamentDetail, 'participants' | 'stages' | 'matches'>> = {},
 ): void {
   detail.value = {
     tournament: tournament(status),
@@ -72,6 +79,7 @@ async function mountAdmin(
   vi.mocked(api.listTournaments).mockResolvedValue([tournament(listed)])
   setDetail(selected, over)
   const view = mount(AdminView, {
+    props: { id: 't1' },
     global: { stubs: { RouterLink: true, ScheduleBoard: true } },
   })
   await flushPromises()
@@ -135,6 +143,15 @@ describe('AdminView phase setup', () => {
     expect((toggle(view, 'knockout').element as HTMLInputElement).checked).toBe(true)
   })
 
+  it('offers removing players only until matches are drawn', async () => {
+    const removable = async (over: Parameters<typeof setDetail>[1]) =>
+      (await mountAdmin('setup', 'setup', over)).findAll('[aria-label="Spieler entfernen"]').length
+
+    expect(await removable({ participants: players })).toBe(2)
+    const drawn = { id: 'm1', participantAId: 'pA', participantBId: 'pB' } as Match
+    expect(await removable({ participants: players, matches: [drawn] })).toBe(0)
+  })
+
   it('explains why it cannot start with every phase off', async () => {
     const view = await mountAdmin('setup', 'setup', { participants: players })
     await toggle(view, 'group').setValue(false)
@@ -171,5 +188,33 @@ describe('AdminView phase setup', () => {
     await flushPromises()
 
     expect(vi.mocked(api.startTournament).mock.calls[0]![1].knockout).toMatchObject({ bestOf: 5 })
+  })
+
+  it('opens a tournament by putting it in the URL', async () => {
+    const view = await mountAdmin('setup', 'setup')
+    await view.find('.tournament-list button').trigger('click')
+    expect(push).toHaveBeenCalledWith({ name: 'admin', params: { id: 't1' } })
+    expect(openSpy).toHaveBeenCalledWith('t1')
+  })
+
+  it('falls back to the list, saying why, when the URL names a tournament that is gone', async () => {
+    openSpy.mockRejectedValueOnce(new Error('not found'))
+    const view = await mountAdmin('setup', 'setup')
+
+    expect(replace).toHaveBeenCalledWith({ name: 'admin' })
+    expect(view.find('.error').text()).toBe('not found')
+  })
+
+  it('ignores a failed load of a tournament the admin already left', async () => {
+    let failFirst!: (reason: Error) => void
+    openSpy.mockImplementationOnce(() => new Promise((_, reject) => (failFirst = reject)))
+    const view = await mountAdmin('setup', 'setup')
+    await view.setProps({ id: 't2' })
+
+    failFirst(new Error('not found'))
+    await flushPromises()
+
+    expect(replace).not.toHaveBeenCalled()
+    expect(view.find('.error').exists()).toBe(false)
   })
 })

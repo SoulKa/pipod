@@ -16,6 +16,7 @@ import {
   cancelTournament,
   configurePhases,
   createFloor,
+  deleteParticipant,
   deleteTournament,
   reactivateTournament,
   startTournament,
@@ -275,5 +276,29 @@ describe('deleteTournament', () => {
     expect(repo.listFloors(tournament.id)).toHaveLength(0)
     expect(repo.listStages(tournament.id)).toHaveLength(0)
     expect(repo.listMatches(tournament.id)).toHaveLength(0)
+  })
+})
+
+describe('deleteParticipant', () => {
+  beforeEach(resetDb)
+
+  it('removes a player before the draw', () => {
+    const { tournament, players } = withPlayers(3)
+    deleteParticipant(players[0]!.id)
+    expect(repo.listParticipants(tournament.id)).toHaveLength(2)
+  })
+
+  it('refuses a player the schedule references, leaving their match intact', () => {
+    const { tournament, players } = withPlayers(2)
+    const [final] = startTournament(tournament.id, knockoutOnly())
+
+    expect(() => deleteParticipant(players[0]!.id)).toThrow(
+      'cannot remove a participant who is in a match',
+    )
+    expect(repo.listParticipants(tournament.id)).toHaveLength(2)
+    expect(repo.getMatch(final!.id)).toMatchObject({
+      participantAId: players[0]!.id,
+      participantBId: players[1]!.id,
+    })
   })
 })

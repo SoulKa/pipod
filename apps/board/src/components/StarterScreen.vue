@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Seat } from '@pipod/shared'
+import type { MatchSeats, Seat } from '@pipod/shared'
 
-defineProps<{ names: [string, string] }>()
+defineProps<{ players: MatchSeats }>()
 
 const emit = defineEmits<{ select: [seat: Seat] }>()
 
@@ -24,7 +24,7 @@ const ACCENTS = ['#22d3ee', '#a78bfa']
         :style="{ '--accent': ACCENTS[seat] }"
         @click="emit('select', seat)"
       >
-        {{ names[seat] }}
+        {{ players[seat].name }}
       </button>
     </div>
   </section>
