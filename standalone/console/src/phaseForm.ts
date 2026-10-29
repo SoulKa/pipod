@@ -9,8 +9,8 @@ import {
   type OutMode,
   type Stage,
   type StartScore,
+  type TournamentDetail,
 } from '@pipod/shared'
-import type { TournamentDetail } from './api'
 
 /** The match rules every phase sets for its own matches. */
 export interface PhaseRules {

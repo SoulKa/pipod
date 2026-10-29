@@ -16,6 +16,14 @@ export type StartScore = (typeof START_SCORES)[number]
 export type TournamentStatus = 'setup' | 'active' | 'completed' | 'cancelled'
 
 /**
+ * Whether a tournament is still open: boards may join it and it may be cancelled. A
+ * finished or cancelled one never assigns another match.
+ */
+export function isOpenTournament(status: TournamentStatus): boolean {
+  return status === 'setup' || status === 'active'
+}
+
+/**
  * A tournament has at most these two phases, always played in this order: a round-robin
  * group phase, then a single-elimination knockout bracket. Each is optional, but at
  * least one is on.

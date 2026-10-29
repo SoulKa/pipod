@@ -6,8 +6,8 @@
 import { ref, watch } from 'vue'
 import type { SortableEvent } from 'sortablejs'
 import { VueDraggable } from 'vue-draggable-plus'
-import type { Floor, LiveMatchState, Match } from '@pipod/shared'
-import { api, type TournamentDetail } from '../api'
+import type { Floor, LiveMatchState, Match, TournamentDetail } from '@pipod/shared'
+import { api } from '../api'
 import { phaseLabel } from '../phases'
 
 const props = defineProps<{ detail: TournamentDetail; live: Map<string, LiveMatchState> }>()

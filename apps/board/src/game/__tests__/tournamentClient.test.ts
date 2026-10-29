@@ -126,6 +126,62 @@ describe('tournamentClient', () => {
   })
 })
 
+describe('choosing a tournament', () => {
+  function serve(body: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => body })),
+    )
+  }
+
+  it('lists only open tournaments', async () => {
+    serve([
+      { id: 't1', name: 'Planned', status: 'setup' },
+      { id: 't2', name: 'Running', status: 'active' },
+      { id: 't3', name: 'Done', status: 'completed' },
+      { id: 't4', name: 'Called off', status: 'cancelled' },
+    ])
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+    sockets[0]!.fire('connect')
+    await vi.waitFor(() => expect(client.tournaments.value).toHaveLength(2))
+
+    expect(client.tournaments.value.map((t) => t.id)).toEqual(['t1', 't2'])
+  })
+
+  it('refuses a closed tournament, e.g. from a saved launch link', async () => {
+    serve({ tournament: { id: 't3', status: 'completed' }, floors: [{ id: 'f1' }] })
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+
+    await expect(client.selectTournament('t3')).resolves.toBe(false)
+    expect(client.selectError.value).toBe('this tournament is over')
+    expect(client.tournamentId.value).toBe('')
+    expect(client.floors.value).toEqual([])
+  })
+
+  it('drops a refusal when connecting to another server', async () => {
+    serve({ tournament: { id: 't3', status: 'completed' }, floors: [] })
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+    await client.selectTournament('t3')
+
+    client.connect('192.168.0.9')
+
+    expect(client.selectError.value).toBe('')
+  })
+
+  it('loads the floors of an open tournament', async () => {
+    serve({ tournament: { id: 't2', status: 'active' }, floors: [{ id: 'f1' }] })
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+
+    await expect(client.selectTournament('t2')).resolves.toBe(true)
+    expect(client.floors.value).toEqual([{ id: 'f1' }])
+    expect(client.selectError.value).toBe('')
+  })
+})
+
 describe('reportLegResult', () => {
   async function connectedClient() {
     const client = await freshClient()

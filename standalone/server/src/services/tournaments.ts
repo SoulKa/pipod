@@ -11,7 +11,7 @@ import type {
   Stage,
   Tournament,
 } from '@pipod/shared'
-import { PHASE_SETUP_ERRORS } from '@pipod/shared'
+import { isOpenTournament, PHASE_SETUP_ERRORS } from '@pipod/shared'
 import { db } from '../db/client'
 import {
   floorSessions,
@@ -48,6 +48,7 @@ export function createTournament(name: string): Tournament {
 export function cancelTournament(id: string): Tournament {
   const tournament = repo.getTournament(id)
   if (!tournament) throw new Error('tournament not found')
+  if (!isOpenTournament(tournament.status)) throw new Error('tournament is already over')
   db.update(tournaments).set({ status: 'cancelled' }).where(eq(tournaments.id, id)).run()
   log.warn({ tournament: id, name: tournament.name }, 'tournament cancelled')
   return { ...tournament, status: 'cancelled' }

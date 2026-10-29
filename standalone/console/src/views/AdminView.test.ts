@@ -6,9 +6,9 @@ import type {
   Participant,
   Stage,
   Tournament,
+  TournamentDetail,
   TournamentStatus,
 } from '@pipod/shared'
-import type { TournamentDetail } from '../api'
 
 const tournament = (status: TournamentStatus): Tournament => ({
   id: 't1',

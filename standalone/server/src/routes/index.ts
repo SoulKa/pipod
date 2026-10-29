@@ -12,6 +12,7 @@ import {
   reportLegSchema,
   updateParticipantSchema,
   type ServerInfo,
+  type TournamentDetail,
 } from '@pipod/shared'
 import { env } from '../env'
 import { publicOrigin } from '../network'
@@ -73,17 +74,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           memberIds: repo.listGroupMembers(g.id),
         })),
       ),
-    }
+    } satisfies TournamentDetail
   })
 
   app.post('/api/tournaments/:id/cancel', async (req, reply) => {
     const { id } = req.params as { id: string }
+    if (!repo.getTournament(id)) return reply.code(404).send({ error: 'not found' })
     try {
       const tournament = cancelTournament(id)
       broadcastSnapshot(id)
       return tournament
     } catch (err) {
-      return reply.code(404).send({ error: (err as Error).message })
+      return reply.code(400).send({ error: (err as Error).message })
     }
   })
 

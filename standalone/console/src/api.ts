@@ -9,23 +9,8 @@ import type {
   ServerInfo,
   Stage,
   Tournament,
+  TournamentDetail,
 } from '@pipod/shared'
-
-export interface GroupView {
-  id: string
-  stageId: string
-  name: string
-  memberIds: string[]
-}
-
-export interface TournamentDetail {
-  tournament: Tournament
-  floors: Floor[]
-  participants: Participant[]
-  stages: Stage[]
-  matches: Match[]
-  groups: GroupView[]
-}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {

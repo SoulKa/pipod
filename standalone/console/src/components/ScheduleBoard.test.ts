@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import type { Floor, LiveMatchState, Match, Participant } from '@pipod/shared'
-import type { TournamentDetail } from '../api'
+import type { Floor, LiveMatchState, Match, Participant, TournamentDetail } from '@pipod/shared'
 
 // ScheduleBoard drives the server-side scheduler through the REST client and renders match
 // cards inside a drag-and-drop list. Mock the api so we can assert calls, and stub the

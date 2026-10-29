@@ -3,12 +3,13 @@ import type { Socket } from 'socket.io'
 import type {
   BoardGameSnapshot,
   ClientToServerEvents,
+  Floor,
   Match,
   Seat,
   ServerToClientEvents,
   SocketData,
 } from '@pipod/shared'
-import { boardSnapshotPayloadSchema } from '@pipod/shared'
+import { boardSnapshotPayloadSchema, isOpenTournament } from '@pipod/shared'
 import { log, subscribeToLogs } from '../logger'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
@@ -75,25 +76,16 @@ export function setupRealtime(io: IoServer): () => void {
     })
 
     socket.on('board:register', ({ boardId, tournamentId, floorId }) => {
-      const floor = repo.getFloor(floorId)
-      if (!floor || floor.tournamentId !== tournamentId) {
+      const checked = checkRegistration(io, socket, tournamentId, floorId)
+      if ('refusal' in checked) {
         log.warn(
-          { board: boardId, floor: floorId, tournament: tournamentId },
-          'board registration rejected: floor is not part of this tournament',
+          { board: boardId, floor: checked.floor?.name ?? floorId, tournament: tournamentId },
+          `board registration rejected: ${checked.refusal}`,
         )
-        socket.emit('error:message', 'selected floor does not belong to this tournament')
+        socket.emit('error:message', checked.refusal)
         return
       }
-      const nextFloorRoom = floorRoomFor(tournamentId, floorId)
-      const occupants = io.sockets.adapter.rooms.get(nextFloorRoom)
-      if (occupants && !(occupants.size === 1 && socket.rooms.has(nextFloorRoom))) {
-        log.warn(
-          { board: boardId, floor: floor.name, tournament: tournamentId },
-          'board registration rejected: floor already has a board',
-        )
-        socket.emit('error:message', 'another board is already connected to this floor')
-        return
-      }
+      const { floor, room: nextFloorRoom } = checked
       if (socket.data.tournamentId && socket.data.floorId) {
         socket.leave(floorRoomFor(socket.data.tournamentId, socket.data.floorId))
       }
@@ -326,6 +318,33 @@ function toBoardSession(session: { snapshot: BoardGameSnapshot | null; revision:
   revision: number
 } {
   return { snapshot: session.snapshot, revision: session.revision }
+}
+
+/**
+ * The floor (and its room) a board may register on, or why it may not — the reason is
+ * sent to the board. A refusal carries the floor when it is one of this tournament's, so
+ * the log can name it.
+ */
+function checkRegistration(
+  io: IoServer,
+  socket: BoardSocket,
+  tournamentId: string,
+  floorId: string,
+): { floor: Floor; room: string } | { refusal: string; floor?: Floor } {
+  const floor = repo.getFloor(floorId)
+  if (!floor || floor.tournamentId !== tournamentId) {
+    return { refusal: 'selected floor does not belong to this tournament' }
+  }
+  const tournament = repo.getTournament(tournamentId)
+  if (!tournament || !isOpenTournament(tournament.status)) {
+    return { refusal: 'this tournament is over', floor }
+  }
+  const room = floorRoomFor(tournamentId, floorId)
+  const occupants = io.sockets.adapter.rooms.get(room)
+  if (occupants && !(occupants.size === 1 && socket.rooms.has(room))) {
+    return { refusal: 'another board is already connected to this floor', floor }
+  }
+  return { floor, room }
 }
 
 function registeredFloor(socket: BoardSocket) {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
-import type { Tournament, TournamentStatus } from '@pipod/shared'
+import { isOpenTournament, type Tournament, type TournamentStatus } from '@pipod/shared'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
 import { usePhaseForm } from '../phaseForm'
@@ -286,7 +286,11 @@ onUnmounted(() => feed.close())
               <button @click="reactivateTournament">Reaktivieren</button>
               <button class="pd-button--danger" @click="confirming = 'delete'">Löschen</button>
             </template>
-            <button v-else class="pd-button--danger" @click="confirming = 'cancel'">
+            <button
+              v-else-if="isOpenTournament(detail.tournament.status)"
+              class="pd-button--danger"
+              @click="confirming = 'cancel'"
+            >
               Turnier abbrechen
             </button>
           </div>

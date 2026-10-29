@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { io, type Socket } from 'socket.io-client'
 import {
   DEFAULT_SERVER_PORT,
+  isOpenTournament,
   type BoardGameSnapshot,
   type BoardSession,
   type ClientToServerEvents,
@@ -10,6 +11,7 @@ import {
   type Multiplier,
   type ServerToClientEvents,
   type Tournament,
+  type TournamentDetail,
 } from '@pipod/shared'
 
 type BoardSocket = Socket<ServerToClientEvents, ClientToServerEvents>
@@ -30,6 +32,9 @@ const floorId = ref('')
 const assignment = ref<MatchAssignment | null>(null)
 const session = ref<BoardSession>({ snapshot: null, revision: 0 })
 const errorMsg = ref('')
+// Kept apart from `errorMsg`, which every (re)connect clears: on a resumed launch link
+// the socket can connect after the tournament was already refused.
+const selectError = ref('')
 // Last floor registration, replayed on every (re)connect: the server keys a board's
 // authorization off the socket, so a dropped transport silently unregisters the board.
 const registration = ref<{ tournamentId: string; floorId: string } | null>(null)
@@ -45,17 +50,34 @@ function normalizeServerUrl(host: string): string {
 async function loadTournaments(): Promise<void> {
   const response = await fetch(`${serverUrl.value}/api/tournaments`)
   if (!response.ok) throw new Error('could not load tournaments from this host')
-  tournaments.value = (await response.json()) as Tournament[]
+  // The server refuses boards on a closed tournament, so never offer one.
+  const list = (await response.json()) as Tournament[]
+  tournaments.value = list.filter((t) => isOpenTournament(t.status))
 }
 
-async function selectTournament(id: string): Promise<void> {
+async function fetchFloors(id: string): Promise<Floor[]> {
+  const response = await fetch(`${serverUrl.value}/api/tournaments/${id}`)
+  if (!response.ok) throw new Error('could not load tournament floors')
+  const detail = (await response.json()) as TournamentDetail
+  // The list hides closed tournaments; this catches a saved launch link to one.
+  if (!isOpenTournament(detail.tournament.status)) throw new Error('this tournament is over')
+  return detail.floors
+}
+
+/** Resolves false (with `selectError` set) when the tournament can't be joined. */
+async function selectTournament(id: string): Promise<boolean> {
   tournamentId.value = id
   floorId.value = ''
   floors.value = []
-  if (!id) return
-  const response = await fetch(`${serverUrl.value}/api/tournaments/${id}`)
-  if (!response.ok) throw new Error('could not load tournament floors')
-  floors.value = ((await response.json()) as { floors: Floor[] }).floors
+  selectError.value = ''
+  try {
+    floors.value = await fetchFloors(id)
+    return true
+  } catch (err) {
+    tournamentId.value = ''
+    selectError.value = err instanceof Error ? err.message : 'could not load tournament'
+    return false
+  }
 }
 
 function setBoardId(id: string): void {
@@ -78,6 +100,8 @@ function selectFloor(id: string): void {
 }
 
 function connect(host: string): void {
+  // A refusal belongs to the tournament list it came from, not to the next server's.
+  selectError.value = ''
   let url: string
   try {
     url = normalizeServerUrl(host)
@@ -172,6 +196,7 @@ export function useTournamentClient() {
     assignment,
     session,
     errorMsg,
+    selectError,
     connect,
     setBoardId,
     selectTournament,

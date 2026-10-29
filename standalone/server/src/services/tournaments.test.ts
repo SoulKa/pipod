@@ -8,28 +8,18 @@ import {
   knockoutOnly,
   knockoutPhase,
 } from '../test/phases'
+import { finishedButStoredAs, withPlayers } from '../test/tournaments'
 import { repo } from '../repo'
 import { reportLeg } from './matches'
 import {
-  addParticipant,
   advancePhases,
   cancelTournament,
   configurePhases,
   createFloor,
-  createTournament,
   deleteTournament,
   reactivateTournament,
   startTournament,
 } from './tournaments'
-
-/** Seed a tournament with `count` participants seeded 1..count. */
-function withPlayers(count: number) {
-  const tournament = createTournament('T')
-  const players = Array.from({ length: count }, (_, i) =>
-    addParticipant(tournament.id, `P${i}`, i + 1),
-  )
-  return { tournament, players }
-}
 
 describe('createTournament / addParticipant', () => {
   beforeEach(resetDb)
@@ -247,12 +237,20 @@ describe('cancel / reactivate status derivation', () => {
   })
 
   it('reactivates a fully-played tournament back to completed', () => {
-    const { tournament, players } = withPlayers(2)
-    const [final] = startTournament(tournament.id, knockoutOnly())
-    reportLeg(final!.id, 0, players[0]!.id)
-
-    cancelTournament(tournament.id)
+    const tournament = finishedButStoredAs('cancelled')
     expect(reactivateTournament(tournament.id).status).toBe('completed')
+  })
+
+  it('refuses to cancel a completed tournament', () => {
+    const tournament = finishedButStoredAs('completed')
+    expect(() => cancelTournament(tournament.id)).toThrow(/already over/)
+    expect(repo.getTournament(tournament.id)!.status).toBe('completed')
+  })
+
+  it('refuses to cancel a tournament twice', () => {
+    const { tournament } = withPlayers(2)
+    cancelTournament(tournament.id)
+    expect(() => cancelTournament(tournament.id)).toThrow(/already over/)
   })
 
   it('refuses to reactivate a tournament that is not cancelled', () => {

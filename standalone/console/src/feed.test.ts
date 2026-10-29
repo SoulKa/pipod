@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Match } from '@pipod/shared'
-import type { TournamentDetail } from './api'
+import type { Match, TournamentDetail } from '@pipod/shared'
 
 // The feed talks to two collaborators — the REST client and the socket. Mock both
 // so we can drive socket events by hand and assert how the feed patches its state.

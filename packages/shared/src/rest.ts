@@ -1,6 +1,7 @@
 // Zod schemas for every REST request body, shared so the server validates and
 // the console builds forms against a single source of truth.
 import { z } from 'zod'
+import type { Floor, Match, Participant, Stage, Tournament } from './domain'
 
 export const outModeSchema = z.enum(['single', 'double'])
 export const stageTypeSchema = z.enum(['group', 'knockout'])
@@ -112,4 +113,22 @@ export interface ServerInfo {
    * LAN address; null when neither is known.
    */
   publicOrigin: string | null
+}
+
+/** A round-robin group with its members, as `GET /api/tournaments/:id` lists it. */
+export interface GroupView {
+  id: string
+  stageId: string
+  name: string
+  memberIds: string[]
+}
+
+/** Response of `GET /api/tournaments/:id`. */
+export interface TournamentDetail {
+  tournament: Tournament
+  floors: Floor[]
+  participants: Participant[]
+  stages: Stage[]
+  matches: Match[]
+  groups: GroupView[]
 }

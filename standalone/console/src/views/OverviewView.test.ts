@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
-import type { LiveMatchState, Match, Stage, TournamentStatus } from '@pipod/shared'
-import type { TournamentDetail } from '../api'
+import type {
+  LiveMatchState,
+  Match,
+  Stage,
+  TournamentDetail,
+  TournamentStatus,
+} from '@pipod/shared'
 
 // The view only reads the feed; stub it so no socket is opened during the test.
 const detail = ref<TournamentDetail | null>(null)

@@ -14,7 +14,7 @@ const host = ref('')
 const step = ref<Step>(canDiscover() ? 'discover' : 'host')
 // The screens behind the current one, so Back returns exactly where the user came from.
 const history = ref<Step[]>([])
-const { connected, floorId, tournaments, floors, errorMsg } = client
+const { connected, floorId, tournaments, floors, errorMsg, selectError } = client
 const hostLabel = computed(() => host.value || 'Host-IP')
 
 function go(next: Step) {
@@ -57,10 +57,11 @@ function connect() {
   })
   go('tournament')
 }
-async function chooseTournament(id: string) {
-  await client.selectTournament(id)
+async function chooseTournament(id: string): Promise<boolean> {
+  if (!(await client.selectTournament(id))) return false
   updateTournamentParams({ tournamentId: id, floorId: undefined })
   go('floor')
+  return true
 }
 function chooseFloor(id: string) {
   client.selectFloor(id)
@@ -77,8 +78,7 @@ onMounted(async () => {
   host.value = p.ip
   connect()
   if (!p.tournamentId) return
-  await chooseTournament(p.tournamentId)
-  if (!p.floorId) return
+  if (!(await chooseTournament(p.tournamentId)) || !p.floorId) return
   chooseFloor(p.floorId)
 })
 </script>
@@ -128,7 +128,8 @@ onMounted(async () => {
       </template>
       <template v-else-if="step === 'tournament'">
         <p v-if="!connected">Verbindung wird hergestellt…</p>
-        <p v-else>Turnier auswählen</p>
+        <p v-else-if="tournaments.length">Turnier auswählen</p>
+        <p v-else>Kein laufendes Turnier auf diesem Server</p>
         <button v-for="t in tournaments" :key="t.id" class="choice" @click="chooseTournament(t.id)">
           {{ t.name }}
         </button>
@@ -144,6 +145,7 @@ onMounted(async () => {
           {{ floor.name }}
         </button>
       </template>
+      <p v-if="selectError && step === 'tournament'" class="error">{{ selectError }}</p>
       <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
     </section>
   </div>

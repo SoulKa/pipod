@@ -26,18 +26,23 @@ vi.mock('../../game/discovery', () => ({
 
 // The wizard only drives the client; stub it so no socket is opened.
 const connect = vi.fn()
+const selectTournament = vi.fn()
+const selectFloor = vi.fn()
+const selectError = ref('')
+let isConnected = false
 vi.mock('../../game/tournamentClient', () => ({
   useTournamentClient: () => ({
-    connected: ref(false),
+    connected: ref(isConnected),
     floorId: ref(''),
     tournaments: ref([]),
     floors: ref([]),
     errorMsg: ref(''),
+    selectError,
     boardId: ref('board-1'),
     connect,
     setBoardId: vi.fn(),
-    selectTournament: vi.fn(),
-    selectFloor: vi.fn(),
+    selectTournament,
+    selectFloor,
   }),
 }))
 
@@ -54,7 +59,36 @@ beforeEach(() => {
   stillSearching = false
   searches.mockClear()
   connect.mockClear()
+  selectTournament.mockReset()
+  selectFloor.mockClear()
+  selectError.value = ''
+  isConnected = false
   window.history.replaceState(null, '', '/')
+})
+
+describe('TournamentBar tournament list', () => {
+  it('says so when no tournament can be joined', async () => {
+    isConnected = true
+    window.history.replaceState(null, '', '/?ip=192.168.0.9')
+    const wrapper = mount(TournamentBar)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Kein laufendes Turnier')
+  })
+
+  it('stays on the list when a saved link points at a closed tournament', async () => {
+    selectTournament.mockImplementation(async () => {
+      selectError.value = 'this tournament is over'
+      return false
+    })
+    window.history.replaceState(null, '', '/?ip=192.168.0.9&tournamentId=t3&floorId=f1')
+    const wrapper = mount(TournamentBar)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('this tournament is over')
+    expect(selectFloor).not.toHaveBeenCalled()
+    expect(new URLSearchParams(window.location.search).has('tournamentId')).toBe(false)
+  })
 })
 
 describe('TournamentBar discovery', () => {

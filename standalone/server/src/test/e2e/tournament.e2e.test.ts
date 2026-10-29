@@ -8,8 +8,8 @@ import type {
   Match,
   MatchAssignment,
   Participant,
-  Stage,
   Tournament,
+  TournamentDetail,
 } from '@pipod/shared'
 import type { RunningServer } from '../../server'
 import { resetDb } from '../db'
@@ -17,12 +17,6 @@ import { api, startTestServer, waitUntil, type ApiClient } from './testServer'
 import { BoardClient, SpectatorClient } from './clients'
 
 const TEST_TIMEOUT_MS = 20_000
-
-interface TournamentDetail {
-  tournament: Tournament
-  stages: Stage[]
-  matches: Match[]
-}
 
 const rules = { startScore: 501, outMode: 'double' } as const
 
@@ -317,6 +311,24 @@ describe('match-end race conditions over websockets', () => {
       intruder.sendRegister(tournament.id, floor.id)
       const message = await intruder.events.wait('error:message')
       expect(message).toBe('another board is already connected to this floor')
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'refuses a board joining a tournament that is over',
+    async () => {
+      const { tournament, roster, floor, board, assignment } = await liveMatch()
+      await board.playMatch(() => roster[0]!.id, assignment)
+      const detail = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
+      expect(detail.tournament.status).toBe('completed')
+      board.close()
+
+      const late = await BoardClient.connect(server.url, 'board-2')
+      clients.push(late)
+      late.sendRegister(tournament.id, floor.id)
+      const message = await late.events.wait('error:message')
+      expect(message).toBe('this tournament is over')
     },
     TEST_TIMEOUT_MS,
   )
