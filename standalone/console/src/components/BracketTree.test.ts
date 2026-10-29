@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import type { LiveMatchState, Match } from '@pipod/shared'
+import { mount, RouterLinkStub } from '@vue/test-utils'
+import type { LiveMatchState, Match, Participant } from '@pipod/shared'
 import BracketTree from './BracketTree.vue'
 
 // happy-dom has no layout engine and so no scrollIntoView; the auto-scroll behaviour
@@ -37,7 +37,10 @@ function match(over: Partial<Match> = {}): Match {
 }
 
 const NAMES: Record<string, string> = { pA: 'Anna', pB: 'Ben', pC: 'Cara', pD: 'Dee' }
-const nameOf = (id: string | null) => (id ? (NAMES[id] ?? '—') : '—')
+const participantOf = (id: string | null): Participant | undefined =>
+  id && NAMES[id]
+    ? { id, tournamentId: 't1', name: NAMES[id], seed: null, avatar: null }
+    : undefined
 
 /** A four-player bracket: two semi-finals feeding one final. */
 function semisAndFinal(over: { final?: Partial<Match> } = {}): Match[] {
@@ -49,7 +52,10 @@ function semisAndFinal(over: { final?: Partial<Match> } = {}): Match[] {
 }
 
 function mountTree(matches: Match[], live = new Map<string, LiveMatchState>()) {
-  return mount(BracketTree, { props: { matches, nameOf, live } })
+  return mount(BracketTree, {
+    props: { matches, participantOf, live },
+    global: { stubs: { RouterLink: RouterLinkStub } },
+  })
 }
 
 describe('BracketTree rendering', () => {

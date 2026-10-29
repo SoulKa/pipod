@@ -14,6 +14,7 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@pipod/shared": "*",
     "vue": "3.5.41"
   },
   "devDependencies": {

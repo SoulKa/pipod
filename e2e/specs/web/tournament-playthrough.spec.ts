@@ -89,7 +89,8 @@ test('a tournament set up in the console is played to its champion on a board', 
   // Only group matches are completed yet — the final is live at most — so this is the
   // group table: two points per win.
   const rows = viewer.locator('.standings-panel tbody tr')
-  await expect(rows.locator('td:first-child')).toHaveText(TABLE)
+  // The name only: the cell also holds the player's avatar (initials, here).
+  await expect(rows.locator('td:first-child .name')).toHaveText(TABLE)
   await expect(rows.locator('td.points')).toHaveText(['4', '2', '0'])
 
   // The last group result drew the final from that table on its own: first against second.

@@ -9,6 +9,7 @@ import {
   groups,
   legs,
   matches,
+  participantPhotos,
   participants,
   stages,
   throws,
@@ -24,6 +25,7 @@ export function resetDb(): void {
   db.delete(stages).run()
   db.delete(floorSessions).run()
   db.delete(floors).run()
+  db.delete(participantPhotos).run()
   db.delete(participants).run()
   db.delete(tournaments).run()
 }

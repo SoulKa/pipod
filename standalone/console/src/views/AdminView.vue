@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { isOpenTournament, type Tournament, type TournamentStatus } from '@pipod/shared'
+import { PlayerAvatar } from '@pipod/ui'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
 import { usePhaseForm } from '../phaseForm'
@@ -198,6 +199,18 @@ async function removeParticipant(id: string) {
   })
 }
 
+/**
+ * Players set their own pictures from the viewer; the admin can only take one down. The
+ * refresh follows this view's convention of reloading after its own changes rather than
+ * waiting for the broadcast.
+ */
+async function removeAvatar(id: string) {
+  await run(async () => {
+    await api.clearAvatar(id)
+    await feed.refresh()
+  })
+}
+
 async function savePhases() {
   const tournamentId = selectedId.value
   if (!tournamentId) return
@@ -348,11 +361,23 @@ onUnmounted(() => feed.close())
             </div>
             <ul v-if="detail.participants.length" class="players">
               <li v-for="participant in detail.participants" :key="participant.id">
-                <span>{{ participant.name }}</span>
+                <PlayerAvatar :participant="participant" :size="28" />
+                <span class="player-name">{{ participant.name }}</span>
                 <span v-if="participant.seed" class="pd-muted"
                   >Setzplatz {{ participant.seed }}</span
                 >
                 <button
+                  v-if="participant.avatar"
+                  class="remove-button"
+                  title="Profilbild entfernen"
+                  aria-label="Profilbild entfernen"
+                  @click="removeAvatar(participant.id)"
+                >
+                  🚫
+                </button>
+                <!-- Players the drawn schedule references can't be removed (the server refuses). -->
+                <button
+                  v-if="!phasesLocked"
                   class="remove-button"
                   aria-label="Spieler entfernen"
                   @click="removeParticipant(participant.id)"
@@ -889,7 +914,7 @@ onUnmounted(() => feed.close())
   background: var(--pd-surface-sunken);
 }
 
-.players li span:first-child {
+.player-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

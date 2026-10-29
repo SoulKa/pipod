@@ -1,7 +1,7 @@
 // Tournament orchestration: CRUD for tournaments/participants/phases and the
 // schedule/bracket generation that turns a phase into concrete matches.
 import { nanoid } from 'nanoid'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, or } from 'drizzle-orm'
 import type {
   ConfigurePhasesInput,
   Floor,
@@ -20,6 +20,7 @@ import {
   groups,
   legs,
   matches,
+  participantPhotos,
   participants,
   stages,
   throws,
@@ -91,6 +92,13 @@ export function deleteTournament(id: string): void {
   db.delete(stages).where(eq(stages.tournamentId, id)).run()
   db.delete(floorSessions).where(eq(floorSessions.tournamentId, id)).run()
   db.delete(floors).where(eq(floors.tournamentId, id)).run()
+  const tournamentParticipants = db
+    .select({ id: participants.id })
+    .from(participants)
+    .where(eq(participants.tournamentId, id))
+  db.delete(participantPhotos)
+    .where(inArray(participantPhotos.participantId, tournamentParticipants))
+    .run()
   db.delete(participants).where(eq(participants.tournamentId, id)).run()
   db.delete(tournaments).where(eq(tournaments.id, id)).run()
   // Unrecoverable, so it is worth a warn: this is the line that explains a tournament
@@ -124,22 +132,37 @@ export function addParticipant(
   name: string,
   seed: number | null,
 ): Participant {
-  const row: Participant = { id: nanoid(), tournamentId, name, seed }
+  const row: Participant = { id: nanoid(), tournamentId, name, seed, avatar: null }
   db.insert(participants).values(row).run()
   log.debug({ tournament: tournamentId, participant: name, seed }, 'participant added')
   return row
 }
 
+/** Undefined for an unknown participant. */
 export function updateParticipant(
   id: string,
   patch: Partial<Pick<Participant, 'name' | 'seed'>>,
-): void {
+): Participant | undefined {
   db.update(participants).set(patch).where(eq(participants.id, id)).run()
   log.debug({ participant: id, ...patch }, 'participant updated')
+  return repo.getParticipant(id)
 }
 
+/**
+ * Only before the schedule references them: a match is handed to a board with both of its
+ * players, so a player may never vanish from a drawn match.
+ */
 export function deleteParticipant(id: string): void {
-  db.delete(participants).where(eq(participants.id, id)).run()
+  const inMatch = db
+    .select({ id: matches.id })
+    .from(matches)
+    .where(or(eq(matches.participantAId, id), eq(matches.participantBId, id)))
+    .get()
+  if (inMatch) throw new Error('cannot remove a participant who is in a match')
+  db.transaction((tx) => {
+    tx.delete(participantPhotos).where(eq(participantPhotos.participantId, id)).run()
+    tx.delete(participants).where(eq(participants.id, id)).run()
+  })
   log.debug({ participant: id }, 'participant removed')
 }
 

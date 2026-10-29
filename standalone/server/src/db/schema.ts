@@ -1,9 +1,10 @@
 // Drizzle table definitions are the source of truth for generated migrations.
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type {
   BracketSlot,
   MatchStatus,
   OutMode,
+  ParticipantAvatar,
   StageType,
   StartScore,
   TournamentStatus,
@@ -24,9 +25,19 @@ export const participants = sqliteTable(
     tournamentId: text('tournament_id').notNull(),
     name: text('name').notNull(),
     seed: integer('seed'),
+    // One JSON value rather than a column per kind, so a participant can never hold both.
+    avatar: text('avatar', { mode: 'json' }).$type<ParticipantAvatar>(),
   },
   (table) => [index('idx_participants_tournament').on(table.tournamentId)],
 )
+
+// Photo bytes live apart from `participants`, so listing participants for every
+// snapshot never drags images along.
+export const participantPhotos = sqliteTable('participant_photos', {
+  participantId: text('participant_id').primaryKey(),
+  data: blob('data', { mode: 'buffer' }).notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
 
 export const floors = sqliteTable(
   'floors',

@@ -7,6 +7,7 @@ import type {
   InterServerEvents,
   LiveMatchState,
   Match,
+  Participant,
   ServerToClientEvents,
   SocketData,
   TournamentSnapshot,
@@ -72,6 +73,11 @@ export function broadcastSnapshot(tournamentId: string): void {
   broadcastTournamentList()
   const snapshot = buildSnapshot(tournamentId)
   if (snapshot) io.to(roomFor(tournamentId)).emit('tournament:state', snapshot)
+}
+
+/** Lets a board refresh a participant's picture on its match intro without a reassignment. */
+export function broadcastParticipant(participant: Participant): void {
+  io?.to(roomFor(participant.tournamentId)).emit('participant:updated', participant)
 }
 
 export function broadcastMatch(match: Match): void {

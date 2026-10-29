@@ -1,16 +1,19 @@
 // REST API. Bodies are validated with the shared zod schemas so the server and the
 // console agree on shapes. Mutations rebroadcast the affected tournament snapshot.
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   addParticipantSchema,
   assignMatchFloorSchema,
+  AVATAR_PHOTO_MAX_BYTES,
   autoAssignToggleSchema,
   configurePhasesSchema,
   createFloorSchema,
   createTournamentSchema,
   reorderQueueSchema,
   reportLegSchema,
+  setAvatarEmojiSchema,
   updateParticipantSchema,
+  type Participant,
   type ServerInfo,
   type TournamentDetail,
 } from '@pipod/shared'
@@ -33,7 +36,13 @@ import {
 } from '../services/tournaments'
 import { assignMatchFloor, claimMatch, reorderFloorQueue, reportLeg } from '../services/matches'
 import { maybeAutoAssign, runAutoAssign, setAutoAssign } from '../services/scheduler'
-import { broadcastMatch, broadcastSnapshot, broadcastTournamentList } from '../realtime/hub'
+import { isJpeg, setAvatar } from '../services/avatars'
+import {
+  broadcastMatch,
+  broadcastParticipant,
+  broadcastSnapshot,
+  broadcastTournamentList,
+} from '../realtime/hub'
 import { dispatchQueuedFloorMatch, dispatchReadyFloors } from '../realtime'
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -143,17 +152,75 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  app.patch('/api/participants/:id', async (req) => {
+  /** Every participant change reaches the room, so a board's intro shows it right away. */
+  function participantChanged(reply: FastifyReply, participant: Participant | undefined) {
+    if (!participant) return reply.code(404).send({ error: 'participant not found' })
+    broadcastParticipant(participant)
+    broadcastSnapshot(participant.tournamentId)
+    return participant
+  }
+
+  app.patch('/api/participants/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
     const patch = updateParticipantSchema.parse(req.body)
-    updateParticipant(id, { name: patch.name, seed: patch.seed ?? null })
-    return { ok: true }
+    return participantChanged(
+      reply,
+      updateParticipant(id, { name: patch.name, seed: patch.seed ?? null }),
+    )
   })
 
-  app.delete('/api/participants/:id', async (req) => {
+  app.delete('/api/participants/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
-    deleteParticipant(id)
-    return { ok: true }
+    try {
+      deleteParticipant(id)
+      return { ok: true }
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message })
+    }
+  })
+
+  // Viewers upload the photo already cropped and scaled, as the raw JPEG body.
+  app.addContentTypeParser(
+    'image/jpeg',
+    { parseAs: 'buffer', bodyLimit: AVATAR_PHOTO_MAX_BYTES },
+    (_req, body, done) => done(null, body),
+  )
+
+  app.get('/api/participants/:id/avatar', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { v } = req.query as { v?: string }
+    // Served as immutable, so only under the current photo's version: an outdated URL
+    // must 404 rather than cache today's bytes under yesterday's name.
+    const avatar = repo.getParticipant(id)?.avatar
+    if (avatar?.kind !== 'photo' || avatar.version !== v) {
+      return reply.code(404).send({ error: 'no photo' })
+    }
+    const photo = repo.getParticipantPhoto(id)
+    if (!photo) return reply.code(404).send({ error: 'no photo' })
+    return reply
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .type('image/jpeg')
+      .send(photo)
+  })
+
+  app.put('/api/participants/:id/avatar/photo', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    if (!Buffer.isBuffer(req.body) || !isJpeg(req.body)) {
+      return reply.code(400).send({ error: 'expected a JPEG image' })
+    }
+    return participantChanged(reply, setAvatar(id, { photo: req.body }))
+  })
+
+  app.put('/api/participants/:id/avatar/emoji', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const parsed = setAvatarEmojiSchema.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'expected a single emoji' })
+    return participantChanged(reply, setAvatar(id, { emoji: parsed.data.emoji }))
+  })
+
+  app.delete('/api/participants/:id/avatar', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    return participantChanged(reply, setAvatar(id, null))
   })
 
   app.put('/api/tournaments/:id/phases', async (req, reply) => {

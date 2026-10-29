@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { legStarterSeat, type BoardGameSnapshot, type Match, type Seat } from '@pipod/shared'
+import {
+  legStarterSeat,
+  type BoardGameSnapshot,
+  type Match,
+  type MatchAssignment,
+  type Seat,
+} from '@pipod/shared'
 import { vTapGuard } from '@pipod/ui'
 import GameScreen from './GameScreen.vue'
 import MatchIntro from './MatchIntro.vue'
@@ -56,16 +62,10 @@ function legsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1
 }
 
+type Seats = MatchAssignment['participants']
+
 // Seat names in server order, so seat indices stay aligned with `matchIds`.
-const seatNames = computed<[string, string]>(() => {
-  const a = tour.assignment.value
-  if (!a) return ['Spieler A', 'Spieler B']
-  const nameById = new Map(a.participants.map((p) => [p.id, p.name]))
-  return [
-    nameById.get(a.match.participantAId ?? '') ?? 'Spieler A',
-    nameById.get(a.match.participantBId ?? '') ?? 'Spieler B',
-  ]
-})
+const namesOf = (seats: Seats): [string, string] => [seats[0].name, seats[1].name]
 
 // A leg that already has darts in it predates the starter choice (an upgrade mid-match,
 // or a snapshot the server seeded before anyone picked). Keep its original seat-0 throw
@@ -87,7 +87,7 @@ function startLeg() {
   if (!a || starter === null) return
   const m = a.match
   startGame({
-    names: seatNames.value,
+    names: namesOf(a.participants),
     startScore: m.startScore,
     outMode: m.outMode,
     startIndex: legStarterSeat(starter, legIndex.value),
@@ -115,8 +115,8 @@ function syncTournamentState() {
 watch(
   () => tour.assignment.value,
   (a) => {
-    if (!a || !a.match.participantAId || !a.match.participantBId) return
-    matchIds.value = [a.match.participantAId, a.match.participantBId]
+    if (!a) return
+    matchIds.value = [a.participants[0].id, a.participants[1].id]
     legsWon.value = [a.match.legsA, a.match.legsB]
     legIndex.value = a.match.legsA + a.match.legsB
     tournamentMode.value = true
@@ -140,14 +140,16 @@ function chooseStarter(seat: Seat) {
   startLeg()
 }
 
-type BoardScreen = { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match }
+type BoardScreen =
+  { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match; seats: Seats }
 
 // Which screen the board shows. A match is introduced, then its starter picked, then played.
 const screen = computed<BoardScreen>(() => {
-  const match = tour.assignment.value?.match
-  if (!tournamentMode.value || !match) return { kind: 'lobby' }
-  if (firstLegStarter.value !== null) return { kind: 'game', match }
-  return { kind: introConfirmedFor.value === match.id ? 'starter' : 'intro', match }
+  const a = tour.assignment.value
+  if (!tournamentMode.value || !a) return { kind: 'lobby' }
+  const { match, participants: seats } = a
+  if (firstLegStarter.value !== null) return { kind: 'game', match, seats }
+  return { kind: introConfirmedFor.value === match.id ? 'starter' : 'intro', match, seats }
 })
 
 // Remounts the screen wrapper, and so re-arms its tap guard, on every screen change, each
@@ -253,14 +255,15 @@ async function reportLegAndContinue() {
 
     <MatchIntro
       v-else-if="screen.kind === 'intro'"
-      :names="seatNames"
+      :players="screen.seats"
+      :server-url="tour.serverUrl.value"
       :match="screen.match"
       @confirm="confirmIntro"
     />
 
     <StarterScreen
       v-else-if="screen.kind === 'starter'"
-      :names="seatNames"
+      :names="namesOf(screen.seats)"
       @select="chooseStarter"
     />
 

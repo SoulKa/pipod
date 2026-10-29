@@ -189,7 +189,10 @@ describe('reportLegResult', () => {
     sockets[0]!.fire('connect')
     client.assignment.value = {
       match: { id: 'm1' } as never,
-      participants: [],
+      participants: [
+        { id: 'p1', name: 'Ann', avatar: null },
+        { id: 'p2', name: 'Bob', avatar: null },
+      ],
     }
     return client
   }

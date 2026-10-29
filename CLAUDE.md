@@ -24,9 +24,12 @@ apps. The darts scorer is one such app; the transit/weather dashboard is another
   schemas, and typed Socket.IO event maps consumed by all of the above.
 - **`packages/ui`** (`@pipod/ui`) — shared touch-first Vue components: the on-screen keyboard
   (`VirtualKeyboard`) and the `TouchTextInput` field that opens it. There is no hardware keyboard
-  on the Pi, so **every text input in every app must use `TouchTextInput`**.
+  on the Pi, so **every text input in every app that runs on the Pi must use `TouchTextInput`**.
+  The console's spectator viewer (`/`, `/view/:id`) is the exception: it is only ever opened on
+  phones and computers, never on the Pi, so it uses native inputs (and the phone's own keyboard).
   It also exports `v-tap-guard` / `guardTaps`, which ignore taps for a moment after an element
-  appears.
+  appears, and `PlayerAvatar`, the one renderer for player pictures (photo, emoji or initials)
+  used by both the console and the board.
 
 ## Commands
 
@@ -158,7 +161,12 @@ receives tournament snapshots and live-match updates. Spectator routes (`/`, `/v
 `tournaments:subscribe`. Otherwise the shell (`App.vue`) opens a
 session-long log feed (`serverLogs.ts` → `logs:subscribe`) and renders `LogTerminal.vue` as a
 bottom drawer (topbar button or Ctrl+backtick); the server forwards live lines only, so the
-buffer lives in the tab and filtering by level/text happens client-side. In dev, Vite proxies
+buffer lives in the tab and filtering by level/text happens client-side. Players set their own picture (photo or
+single emoji, rules in `@pipod/shared` `avatar.ts`) on the bare `/view/:id/player/:participantId`
+page — no auth by design. The phone crops/scales photos to 512px JPEG before upload; the server
+keeps the bytes in the `participant_photos` table (never in snapshots) and serves them at a
+immutable URL versioned by a hash of the bytes, and only under the current version. Every participant change (picture or
+rename) pushes `participant:updated`, so a board's match intro refreshes in place. In dev, Vite proxies
 `/api` and `/socket.io` to `SERVER_URL` (default `http://localhost:3000`).
 
 **Launcher (`standalone/launcher`).** `src/renderer` is the Vue home screen (app tiles, store,
@@ -218,7 +226,8 @@ newer release-installed bundle on every restart, and the store shows "v1.0.0 →
   as it appears; things that appear inside a screen (result cards, dialogs) use `v-tap-guard`
   too. Never guard scoring input: fast repeat taps there are real. e2e specs wait for the guard
   (`waitUntilArmed`) before a deliberate tap.
-- Text entry goes through `TouchTextInput` from `@pipod/ui` — never a bare `<input type="text">`.
+- Text entry on the Pi goes through `TouchTextInput` from `@pipod/ui` — never a bare
+  `<input type="text">` (the spectator viewer, which never runs on the Pi, uses native inputs).
   It falls attributes through to the real input, so app-specific classes still apply; because it
   has a fragment root, parent scoped styles must target it with `:deep()`. Retheme the keyboard
   through the `--kb-*` custom properties (defaults are the board's dark palette), and reserve room

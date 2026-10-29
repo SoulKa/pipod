@@ -60,7 +60,17 @@ export interface Participant {
   name: string
   /** Seeding for bracket generation; null when unseeded. */
   seed: number | null
+  /** Picture players set for themselves from the viewer; null shows their initials. */
+  avatar: ParticipantAvatar | null
 }
+
+export type ParticipantAvatar =
+  | { kind: 'emoji'; emoji: string }
+  /**
+   * The image is served separately. `version` is a hash of its bytes, so a photo's URL
+   * changes exactly when the photo does.
+   */
+  | { kind: 'photo'; version: string }
 
 /** A named physical playing area with exactly one connected scoring board. */
 export interface Floor {

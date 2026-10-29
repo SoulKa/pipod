@@ -74,7 +74,23 @@ export const api = {
     return post(`/api/tournaments/${tournamentId}/participants`, input)
   },
   async deleteParticipant(id: string): Promise<void> {
-    await fetch(`/api/participants/${id}`, { method: 'DELETE' })
+    await json<{ ok: true }>(await fetch(`/api/participants/${id}`, { method: 'DELETE' }))
+  },
+  /** Upload an already cropped and scaled JPEG (see `toAvatarJpeg`). */
+  async setAvatarPhoto(id: string, jpeg: Blob): Promise<Participant> {
+    return json(
+      await fetch(`/api/participants/${id}/avatar/photo`, {
+        method: 'PUT',
+        headers: { 'content-type': 'image/jpeg' },
+        body: jpeg,
+      }),
+    )
+  },
+  setAvatarEmoji(id: string, emoji: string): Promise<Participant> {
+    return put(`/api/participants/${id}/avatar/emoji`, { emoji })
+  },
+  async clearAvatar(id: string): Promise<Participant> {
+    return json(await fetch(`/api/participants/${id}/avatar`, { method: 'DELETE' }))
   },
   configurePhases(tournamentId: string, input: ConfigurePhasesInput): Promise<Stage[]> {
     return put(`/api/tournaments/${tournamentId}/phases`, input)

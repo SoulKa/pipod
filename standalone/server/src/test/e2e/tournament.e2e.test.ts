@@ -11,6 +11,7 @@ import type {
   Tournament,
   TournamentDetail,
 } from '@pipod/shared'
+import { AVATAR_PHOTO_MAX_BYTES } from '@pipod/shared'
 import type { RunningServer } from '../../server'
 import { resetDb } from '../db'
 import { api, startTestServer, waitUntil, type ApiClient } from './testServer'
@@ -499,6 +500,27 @@ describe('server log stream over websockets', () => {
   )
 })
 
+describe('participants over REST', () => {
+  it(
+    'refuses to remove a player once a match is drawn for them',
+    async () => {
+      const { tournament, roster } = await createTournament('Keep Cup', ['Ann', 'Bob'], [])
+      await start(tournament.id, finalOnly)
+
+      const response = await fetch(`${server.url}/api/participants/${roster[0]!.id}`, {
+        method: 'DELETE',
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({
+        error: 'cannot remove a participant who is in a match',
+      })
+      const detail = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
+      expect(detail.participants).toHaveLength(2)
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
 describe('phase setup over REST', () => {
   it(
     'locks the phases once the tournament has started',
@@ -538,6 +560,147 @@ describe('tournament list over websockets', () => {
 
       await fetch(`${server.url}/api/tournaments/${tournament.id}`, { method: 'DELETE' })
       await viewer.waitForList((list) => list.length === 0)
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
+describe('player pictures over REST and websockets', () => {
+  /** Smallest byte string the server accepts as a JPEG; it never decodes the image. */
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46])
+
+  /** Fetch a photo under the version the upload was given — the URL clients use. */
+  async function getPhoto(participantId: string, upload: Response) {
+    const { avatar } = (await upload.json()) as Participant
+    if (avatar?.kind !== 'photo') throw new Error('upload did not set a photo')
+    return fetch(`${server.url}/api/participants/${participantId}/avatar?v=${avatar.version}`)
+  }
+
+  function putPhoto(participantId: string, body: Buffer, type = 'image/jpeg') {
+    return fetch(`${server.url}/api/participants/${participantId}/avatar/photo`, {
+      method: 'PUT',
+      headers: { 'content-type': type },
+      body: new Uint8Array(body),
+    })
+  }
+
+  it(
+    'pushes a changed picture to the board holding the match',
+    async () => {
+      const { tournament, roster, floors } = await createTournament(
+        'Picture Cup',
+        ['Ann', 'Bob'],
+        ['Floor 1'],
+      )
+      const board = await openBoard('board-1', tournament.id, floors[0]!.id)
+      await start(tournament.id, finalOnly)
+      const assignment = await board.nextAssignment()
+      expect(assignment?.participants.map((p) => p.avatar)).toEqual([null, null])
+
+      const ann = roster[0]!
+      await rest.put(`/api/participants/${ann.id}/avatar/emoji`, { emoji: '🍺' })
+      const withEmoji = await board.events.wait('participant:updated')
+      expect(withEmoji).toMatchObject({ id: ann.id, avatar: { kind: 'emoji', emoji: '🍺' } })
+
+      expect((await putPhoto(ann.id, jpeg)).status).toBe(200)
+      const withPhoto = await board.events.wait('participant:updated')
+      expect(withPhoto.avatar).toMatchObject({ kind: 'photo' })
+      const avatar = withPhoto.avatar!
+
+      if (avatar.kind !== 'photo') throw new Error('expected a photo')
+      const served = await fetch(
+        `${server.url}/api/participants/${ann.id}/avatar?v=${avatar.version}`,
+      )
+      expect(served.headers.get('content-type')).toBe('image/jpeg')
+      expect(served.headers.get('cache-control')).toContain('immutable')
+      expect(Buffer.from(await served.arrayBuffer())).toEqual(jpeg)
+      // Only the current version is served: anything else would be cached as immutable.
+      expect((await fetch(`${server.url}/api/participants/${ann.id}/avatar`)).status).toBe(404)
+      expect((await fetch(`${server.url}/api/participants/${ann.id}/avatar?v=stale`)).status).toBe(
+        404,
+      )
+
+      // A reconnecting board gets the picture with its assignment.
+      board.close()
+      const reconnected = await openBoard('board-1', tournament.id, floors[0]!.id)
+      const resumed = await reconnected.nextAssignment()
+      expect(resumed?.participants.find((p) => p.id === ann.id)?.avatar).toEqual(avatar)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'pushes a rename to the tournament room too',
+    async () => {
+      const { tournament, roster } = await createTournament('Rename Cup', ['Ann'], [])
+      const spectator = await openSpectator(tournament.id)
+      const response = await fetch(`${server.url}/api/participants/${roster[0]!.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Anna' }),
+      })
+      expect(response.status).toBe(200)
+      expect(await spectator.events.wait('participant:updated')).toMatchObject({ name: 'Anna' })
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'replaces one picture kind with the other and removes it',
+    async () => {
+      const { tournament, roster } = await createTournament('Swap Cup', ['Ann'], [])
+      const ann = roster[0]!
+      const avatarOf = async () =>
+        (await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)).participants[0]!
+          .avatar
+
+      const first = await putPhoto(ann.id, jpeg)
+      expect(await avatarOf()).toMatchObject({ kind: 'photo' })
+
+      await rest.put(`/api/participants/${ann.id}/avatar/emoji`, { emoji: '👨‍👩‍👧' })
+      expect(await avatarOf()).toEqual({ kind: 'emoji', emoji: '👨‍👩‍👧' })
+      expect((await getPhoto(ann.id, first)).status).toBe(404)
+
+      const second = await putPhoto(ann.id, jpeg)
+      await fetch(`${server.url}/api/participants/${ann.id}/avatar`, { method: 'DELETE' })
+      expect(await avatarOf()).toBeNull()
+      expect((await getPhoto(ann.id, second)).status).toBe(404)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'refuses what is not a picture',
+    async () => {
+      const { roster } = await createTournament('Strict Cup', ['Ann'], [])
+      const ann = roster[0]!
+
+      await expect(
+        rest.put(`/api/participants/${ann.id}/avatar/emoji`, { emoji: 'lol' }),
+      ).rejects.toThrow(/400/)
+      await expect(
+        rest.put(`/api/participants/${ann.id}/avatar/emoji`, { emoji: '🍺🍺' }),
+      ).rejects.toThrow(/400/)
+      expect((await putPhoto(ann.id, Buffer.from('not a jpeg'))).status).toBe(400)
+      expect((await putPhoto(ann.id, jpeg, 'image/png')).status).toBe(415)
+      const tooBig = Buffer.concat([jpeg, Buffer.alloc(AVATAR_PHOTO_MAX_BYTES)])
+      expect((await putPhoto(ann.id, tooBig)).status).toBe(413)
+      expect((await putPhoto('nobody', jpeg)).status).toBe(404)
+      await expect(
+        rest.put('/api/participants/nobody/avatar/emoji', { emoji: '🍺' }),
+      ).rejects.toThrow(/404/)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'deletes photos along with their tournament',
+    async () => {
+      const { tournament, roster } = await createTournament('Gone Cup', ['Ann'], [])
+      const ann = roster[0]!
+      const upload = await putPhoto(ann.id, jpeg)
+      await fetch(`${server.url}/api/tournaments/${tournament.id}`, { method: 'DELETE' })
+      expect((await getPhoto(ann.id, upload)).status).toBe(404)
     },
     TEST_TIMEOUT_MS,
   )

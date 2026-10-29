@@ -5,6 +5,7 @@ import { buildBracketRounds, championOf } from '../bracket'
 import { phaseLabel } from '../phases'
 import BracketTree from '../components/BracketTree.vue'
 import IdleBoard from '../components/IdleBoard.vue'
+import PlayerTag from '../components/PlayerTag.vue'
 import ViewerQrButton from '../components/ViewerQrButton.vue'
 
 const props = defineProps<{
@@ -19,10 +20,11 @@ const { detail, standings, live, connected } = feed
 onMounted(() => feed.open(props.id))
 onUnmounted(() => feed.close())
 
-const nameOf = computed(() => {
-  const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p.name]))
-  return (id: string | null) => (id ? (map.get(id) ?? '—') : '—')
+const participantOf = computed(() => {
+  const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p]))
+  return (id: string | null) => (id ? map.get(id) : undefined)
 })
+const nameOf = (id: string | null) => participantOf.value(id)?.name ?? '—'
 
 const liveMatches = computed(() => (detail.value?.matches ?? []).filter((m) => m.status === 'live'))
 
@@ -95,7 +97,9 @@ const champion = computed(() => {
       <div v-if="liveMatches.length" class="live-strip">
         <article v-for="m in liveMatches" :key="m.id" class="pd-panel live-card">
           <div class="live-player">
-            <span class="pname">{{ nameOf(m.participantAId) }}</span>
+            <span class="pname"
+              ><PlayerTag :participant="participantOf(m.participantAId)" :size="40"
+            /></span>
             <strong class="pscore">{{
               live.get(m.id)?.scores.find((s) => s.participantId === m.participantAId)?.remaining ??
               m.startScore
@@ -108,7 +112,9 @@ const champion = computed(() => {
             >
           </div>
           <div class="live-player">
-            <span class="pname">{{ nameOf(m.participantBId) }}</span>
+            <span class="pname"
+              ><PlayerTag :participant="participantOf(m.participantBId)" :size="40"
+            /></span>
             <strong class="pscore">{{
               live.get(m.id)?.scores.find((s) => s.participantId === m.participantBId)?.remaining ??
               m.startScore
@@ -125,6 +131,21 @@ const champion = computed(() => {
           :title="nothingPlayed ? 'Warte auf das erste Match…' : 'Warte auf das nächste Match…'"
         />
       </div>
+    </section>
+
+    <section v-if="detail.participants.length" class="pd-panel players-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Profilbilder</p>
+          <h2>Spieler</h2>
+        </div>
+        <span class="pd-muted">Tippe auf deinen Namen für ein Foto oder Emoji</span>
+      </div>
+      <ul class="player-grid">
+        <li v-for="p in detail.participants" :key="p.id">
+          <PlayerTag :participant="p" :size="36" />
+        </li>
+      </ul>
     </section>
 
     <div class="overview-lower">
@@ -149,7 +170,7 @@ const champion = computed(() => {
             </thead>
             <tbody>
               <tr v-for="s in standings" :key="s.participantId">
-                <td>{{ nameOf(s.participantId) }}</td>
+                <td><PlayerTag :participant="participantOf(s.participantId)" /></td>
                 <td>{{ s.played }}</td>
                 <td>{{ s.wins }}</td>
                 <td>{{ s.legDiff }}</td>
@@ -185,18 +206,18 @@ const champion = computed(() => {
             <BracketTree
               v-if="matches.length && stage.type === 'knockout'"
               :matches="matches"
-              :name-of="nameOf"
+              :participant-of="participantOf"
               :live="live"
             />
             <div v-else-if="matches.length" class="match-list">
               <div v-for="m in matches" :key="m.id" class="match-row">
-                <span :class="{ win: m.winnerId === m.participantAId }">{{
-                  nameOf(m.participantAId)
-                }}</span>
+                <span :class="{ win: m.winnerId === m.participantAId }"
+                  ><PlayerTag :participant="participantOf(m.participantAId)" :size="20"
+                /></span>
                 <strong class="score">{{ m.legsA }}–{{ m.legsB }}</strong>
-                <span :class="{ win: m.winnerId === m.participantBId }">{{
-                  nameOf(m.participantBId)
-                }}</span>
+                <span :class="{ win: m.winnerId === m.participantBId }"
+                  ><PlayerTag :participant="participantOf(m.participantBId)" :size="20"
+                /></span>
               </div>
             </div>
             <p v-else class="pd-muted">
@@ -371,6 +392,30 @@ const champion = computed(() => {
 .live-empty {
   min-height: 6rem;
   justify-content: center;
+}
+
+.player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  gap: var(--pd-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-grid li {
+  display: flex;
+  min-width: 0;
+  min-height: 3rem;
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius-sm);
+  background: var(--pd-surface-sunken);
+}
+
+/* The whole tile is the tap target, not just the name. */
+.player-grid .tag {
+  flex: 1;
+  padding: var(--pd-space-1) var(--pd-space-2);
 }
 
 .overview-lower {

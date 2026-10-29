@@ -2,7 +2,15 @@
 // this module stays free of any socket.io dependency — the server and clients
 // supply them as generics to Server<...> / io<...>() for end-to-end typing.
 import type { BoardGameSnapshot } from './boardState'
-import type { Floor, LiveMatchState, Match, Multiplier, Standing, Tournament } from './domain'
+import type {
+  Floor,
+  LiveMatchState,
+  Match,
+  Multiplier,
+  Participant,
+  Standing,
+  Tournament,
+} from './domain'
 
 /** A live dart pushed from a board while a match is in progress. */
 export interface ThrowPayload {
@@ -25,10 +33,17 @@ export interface LegResultPayload {
  */
 export type LegResultResponse = { ok: true; match: Match } | { ok: false; message: string }
 
+/** A match seat's player, as a board shows them. */
+export type SeatPlayer = Pick<Participant, 'id' | 'name' | 'avatar'>
+
 /** Match config the server hands to a board that has claimed a match. */
 export interface MatchAssignment {
   match: Match
-  participants: { id: string; name: string }[]
+  /**
+   * Both players in seat order (A, B). Only ready matches are dispatched, and a match is
+   * ready only once both seats are filled, so a board never sees an empty seat.
+   */
+  participants: [SeatPlayer, SeatPlayer]
 }
 
 /** The persisted state returned after registering a floor board or saving a snapshot. */
@@ -81,6 +96,8 @@ export interface ServerToClientEvents {
   'match:assigned': (payload: MatchAssignment) => void
   'match:live': (state: LiveMatchState) => void
   'match:updated': (match: Match) => void
+  /** A participant changed (e.g. their picture), so a board can refresh its match intro. */
+  'participant:updated': (participant: Participant) => void
   /** Sent after registration so a reconnecting board can restore its full state. */
   'board:session': (session: BoardSession) => void
   'error:message': (message: string) => void

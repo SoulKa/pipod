@@ -1,3 +1,4 @@
+export * from './avatar'
 export * from './discovery'
 export * from './domain'
 export {

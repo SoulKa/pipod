@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import type {
   LiveMatchState,
+  Match,
   Participant,
   Stage,
   Tournament,
@@ -45,13 +46,13 @@ import { api } from '../api'
 import AdminView from './AdminView.vue'
 
 const players: Participant[] = [
-  { id: 'pA', tournamentId: 't1', name: 'Anna', seed: null },
-  { id: 'pB', tournamentId: 't1', name: 'Ben', seed: null },
+  { id: 'pA', tournamentId: 't1', name: 'Anna', seed: null, avatar: null },
+  { id: 'pB', tournamentId: 't1', name: 'Ben', seed: null, avatar: null },
 ]
 
 function setDetail(
   status: TournamentStatus,
-  over: Partial<Pick<TournamentDetail, 'participants' | 'stages'>> = {},
+  over: Partial<Pick<TournamentDetail, 'participants' | 'stages' | 'matches'>> = {},
 ): void {
   detail.value = {
     tournament: tournament(status),
@@ -133,6 +134,15 @@ describe('AdminView phase setup', () => {
     const view = await mountAdmin('setup', 'setup', { stages: [knockoutStage] })
     expect((toggle(view, 'group').element as HTMLInputElement).checked).toBe(false)
     expect((toggle(view, 'knockout').element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('offers removing players only until matches are drawn', async () => {
+    const removable = async (over: Parameters<typeof setDetail>[1]) =>
+      (await mountAdmin('setup', 'setup', over)).findAll('[aria-label="Spieler entfernen"]').length
+
+    expect(await removable({ participants: players })).toBe(2)
+    const drawn = { id: 'm1', participantAId: 'pA', participantBId: 'pB' } as Match
+    expect(await removable({ participants: players, matches: [drawn] })).toBe(0)
   })
 
   it('explains why it cannot start with every phase off', async () => {

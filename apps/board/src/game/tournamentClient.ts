@@ -131,6 +131,11 @@ function connect(host: string): void {
   })
   next.on('disconnect', () => (connected.value = false))
   next.on('match:assigned', (value) => (assignment.value = value))
+  // Patched in place: replacing the assignment would restart the match it belongs to.
+  next.on('participant:updated', (participant) => {
+    const entry = assignment.value?.participants.find((p) => p.id === participant.id)
+    if (entry) Object.assign(entry, { name: participant.name, avatar: participant.avatar })
+  })
   next.on('board:session', (value) => (session.value = value))
   next.on('error:message', (message) => (errorMsg.value = message))
 }
