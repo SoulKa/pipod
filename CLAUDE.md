@@ -150,7 +150,8 @@ served over `piapp://` (i.e. by the launcher) and start on manual IP entry other
 logs the admin link and a terminal QR code for the viewer, and opens `/admin` in the browser
 (`OPEN_BROWSER=0` disables it; off under `NODE_ENV=production` and `yarn dev:server`). Logging goes
 through `src/logger.ts` (plain text
-instead of pino's JSON, one line per request, `LOG_LEVEL` to change verbosity) — log through
+instead of pino's JSON, one line per request — successful `GET`/`HEAD`/`OPTIONS` at `debug`,
+other requests at `info` — `LOG_LEVEL` to change verbosity) — log through
 `app.log` / `request.log` or the exported `log`, not `console.log`. `subscribeToLogs()` mirrors
 records at `debug` and above regardless of `LOG_LEVEL`; `realtime/` forwards them to consoles in
 the `logs` room, and a subscriber must never log (it would recurse).

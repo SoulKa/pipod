@@ -178,6 +178,18 @@ describe('PrettyLogController', () => {
     expect(lines[0]).toContain('GET  /api/tournaments')
   })
 
+  it('logs successful reads at debug level', () => {
+    const controller = new PrettyLogController()
+    const get = requestPair({ method: 'GET' })
+    const preflight = requestPair({ method: 'OPTIONS', statusCode: 204 })
+
+    controller.requestCompleted(null, get.request, get.reply)
+    controller.requestCompleted(null, preflight.request, preflight.reply)
+
+    expect(get.lines).toEqual(['12:04:31 DEBUG GET  /api/tournaments 200 3ms'])
+    expect(preflight.lines[0]).toContain('DEBUG')
+  })
+
   it('raises the level for failing status codes', () => {
     const controller = new PrettyLogController()
     const notFound = requestPair({ statusCode: 404 })

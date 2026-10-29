@@ -174,6 +174,12 @@ export function createLogger(opts: PrettyLoggerOptions = {}): FastifyBaseLogger 
 export const log = createLogger()
 
 /**
+ * Successful reads only drop to debug: the served console's assets, player photos and
+ * refetching viewers would otherwise bury the mutations that change a tournament.
+ */
+const QUIET_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
  * Replaces Fastify's "incoming request" / "request completed" pair with one line per
  * request: `GET  /api/tournaments 200 3ms`.
  */
@@ -192,6 +198,8 @@ export class PrettyLogController extends LogController {
       reply.log.error(line)
     } else if (reply.statusCode >= 400) {
       reply.log.warn(line)
+    } else if (QUIET_METHODS.has(request.method)) {
+      reply.log.debug(line)
     } else {
       reply.log.info(line)
     }
