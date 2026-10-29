@@ -20,7 +20,6 @@ import {
   groups,
   legs,
   matches,
-  participantPhotos,
   participants,
   stages,
   throws,
@@ -66,7 +65,10 @@ export function reactivateTournament(id: string): Tournament {
   return { ...tournament, status }
 }
 
-/** Permanently delete a tournament and every row that hangs off it (no FK cascades). */
+/**
+ * Permanently delete a tournament and every row that hangs off it. Only participant photos
+ * cascade; everything else is deleted by hand.
+ */
 export function deleteTournament(id: string): void {
   const tournament = repo.getTournament(id)
   if (!tournament) throw new Error('tournament not found')
@@ -92,13 +94,7 @@ export function deleteTournament(id: string): void {
   db.delete(stages).where(eq(stages.tournamentId, id)).run()
   db.delete(floorSessions).where(eq(floorSessions.tournamentId, id)).run()
   db.delete(floors).where(eq(floors.tournamentId, id)).run()
-  const tournamentParticipants = db
-    .select({ id: participants.id })
-    .from(participants)
-    .where(eq(participants.tournamentId, id))
-  db.delete(participantPhotos)
-    .where(inArray(participantPhotos.participantId, tournamentParticipants))
-    .run()
+  // Their photos go with them (ON DELETE CASCADE).
   db.delete(participants).where(eq(participants.tournamentId, id)).run()
   db.delete(tournaments).where(eq(tournaments.id, id)).run()
   // Unrecoverable, so it is worth a warn: this is the line that explains a tournament
@@ -148,9 +144,16 @@ export function updateParticipant(
   return repo.getParticipant(id)
 }
 
+/** Why a participant can't be removed; the route answers it as a client error. */
+export class ParticipantInMatchError extends Error {
+  constructor() {
+    super('cannot remove a participant who is in a match')
+  }
+}
+
 /**
  * Only before the schedule references them: a match is handed to a board with both of its
- * players, so a player may never vanish from a drawn match.
+ * players, so a player may never vanish from a drawn match. Their photo goes with them.
  */
 export function deleteParticipant(id: string): void {
   const inMatch = db
@@ -158,11 +161,8 @@ export function deleteParticipant(id: string): void {
     .from(matches)
     .where(or(eq(matches.participantAId, id), eq(matches.participantBId, id)))
     .get()
-  if (inMatch) throw new Error('cannot remove a participant who is in a match')
-  db.transaction((tx) => {
-    tx.delete(participantPhotos).where(eq(participantPhotos.participantId, id)).run()
-    tx.delete(participants).where(eq(participants.id, id)).run()
-  })
+  if (inMatch) throw new ParticipantInMatchError()
+  db.delete(participants).where(eq(participants.id, id)).run()
   log.debug({ participant: id }, 'participant removed')
 }
 

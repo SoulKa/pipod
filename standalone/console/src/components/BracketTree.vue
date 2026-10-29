@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import type { LiveMatchState, Match, Participant } from '@pipod/shared'
+import type { LiveMatchState, Match } from '@pipod/shared'
 import { activeRoundIndex, buildBracketRounds, championOf } from '../bracket'
 import PlayerTag from './PlayerTag.vue'
 
 const props = defineProps<{
   matches: Match[]
-  participantOf: (id: string | null) => Participant | undefined
   live: Map<string, LiveMatchState>
 }>()
 
@@ -82,19 +81,11 @@ watch(activeIndex, scrollToActive)
               <div v-for="m in row.matches" :key="m.id" class="cell">
                 <article class="match" :class="{ 'match--live': m.status === 'live' }">
                   <div class="side" :class="{ win: isWinner(m, m.participantAId) }">
-                    <PlayerTag
-                      class="pname"
-                      :participant="participantOf(m.participantAId)"
-                      :size="20"
-                    />
+                    <PlayerTag class="pname" :id="m.participantAId" :size="20" />
                     <span class="legs">{{ legsOf(m).a }}</span>
                   </div>
                   <div class="side" :class="{ win: isWinner(m, m.participantBId) }">
-                    <PlayerTag
-                      class="pname"
-                      :participant="participantOf(m.participantBId)"
-                      :size="20"
-                    />
+                    <PlayerTag class="pname" :id="m.participantBId" :size="20" />
                     <span class="legs">{{ legsOf(m).b }}</span>
                   </div>
                 </article>
@@ -120,7 +111,7 @@ watch(activeIndex, scrollToActive)
 
     <p v-if="champion" class="champion">
       <span class="champion-label">🏆 Sieger</span>
-      <strong class="champion-name">{{ participantOf(champion)?.name ?? '—' }}</strong>
+      <PlayerTag class="champion-name" :id="champion" :size="40" />
     </p>
   </div>
 </template>

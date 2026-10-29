@@ -5,14 +5,14 @@ import {
   avatarInitials,
   avatarKey,
   avatarPhotoUrl,
-  type Participant,
+  type SeatPlayer,
 } from '@pipod/shared'
 
 // A player's picture: their photo, their emoji, or their initials on a hue of their own.
 // The one renderer every screen uses, so the fallback looks the same everywhere.
 const props = withDefaults(
   defineProps<{
-    participant: Pick<Participant, 'id' | 'name' | 'avatar'>
+    participant: SeatPlayer
     /** Diameter in px. */
     size?: number
     /** Server origin photos load from; empty for a page served by the server itself. */

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "78dc1243-12b9-489c-aaf4-8fb21a13f127",
+  "id": "62ab545b-1297-4703-aff1-b6cec3e8d2fd",
   "prevId": "57f00d84-5748-4a4f-9614-6ef283b3064d",
   "tables": {
     "floor_sessions": {
@@ -419,17 +419,24 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "participant_photos_participant_id_participants_id_fk": {
+          "name": "participant_photos_participant_id_participants_id_fk",
+          "tableFrom": "participant_photos",
+          "tableTo": "participants",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

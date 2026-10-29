@@ -7,6 +7,11 @@ import { useServerLogs } from './serverLogs'
 const route = useRoute()
 /** Spectator screens skip the shell. Unresolved (before the first navigation) counts as bare. */
 const bare = computed(() => !route.matched.length || route.meta.bare === true)
+/** The open tournament's viewer; `/` (follows the active tournament) when none is open. */
+const liveLink = computed(() => {
+  const id = route.params.id
+  return route.name === 'admin' && typeof id === 'string' && id ? `/view/${id}` : '/'
+})
 
 // The log feed runs for the whole session, not just while the drawer is open: the server
 // forwards live lines only, so subscribing on open would show an empty terminal. Viewers
@@ -70,7 +75,7 @@ onUnmounted(() => {
     <header class="console-topbar">
       <RouterLink class="console-brand" to="/admin">🎯 Pi-Darts Konsole</RouterLink>
       <nav class="console-nav pd-row">
-        <RouterLink to="/">Live</RouterLink>
+        <RouterLink :to="liveLink">Live</RouterLink>
         <RouterLink to="/admin">Admin</RouterLink>
         <button
           type="button"

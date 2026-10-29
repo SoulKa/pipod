@@ -20,6 +20,8 @@ vi.mock('../feed', () => ({
     open: vi.fn(),
     close: vi.fn(),
     refresh: vi.fn(),
+    participant: (id: string | null) => detail.value?.participants.find((p) => p.id === id),
+    nameOf: (id: string | null) => detail.value?.participants.find((p) => p.id === id)?.name ?? '—',
   }),
 }))
 

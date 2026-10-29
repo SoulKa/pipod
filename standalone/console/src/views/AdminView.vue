@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { isOpenTournament, type Tournament, type TournamentStatus } from '@pipod/shared'
 import { PlayerAvatar } from '@pipod/ui'
 import { api } from '../api'
@@ -20,10 +21,14 @@ const STATUS_LABELS: Record<TournamentStatus, string> = {
 }
 const statusLabel = (status: TournamentStatus) => STATUS_LABELS[status] ?? status
 
+/** The tournament open in the console comes from the URL, so reloads and links keep it. */
+const props = defineProps<{ id?: string }>()
+
+const router = useRouter()
 const tournaments = ref<Tournament[]>([])
 const feed = useTournamentFeed()
-const { detail, live } = feed
-const selectedId = ref<string | null>(null)
+const { detail, live, nameOf } = feed
+const selectedId = computed(() => props.id ?? null)
 const activeTab = ref<AdminTab>('setup')
 const error = ref('')
 const confirming = ref<null | 'cancel' | 'delete'>(null)
@@ -72,17 +77,34 @@ watch(
   { deep: true },
 )
 
-async function select(id: string) {
-  selectedId.value = id
-  feed.close()
-  await feed.open(id)
-  if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
+function select(id: string): Promise<unknown> {
+  return router.push({ name: 'admin', params: { id } })
 }
 
-const nameOf = computed(() => {
-  const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p.name]))
-  return (id: string | null) => (id ? (map.get(id) ?? '—') : '—')
-})
+// Any URL can name a tournament — a bookmark, a typo, one deleted in another tab — so a
+// failed open says why and falls back to the list. Not through `run()`: that clears the
+// error, and the fallback navigation re-runs this watcher.
+watch(
+  selectedId,
+  async (id) => {
+    feed.close()
+    if (!id) {
+      detail.value = null
+      return
+    }
+    error.value = ''
+    try {
+      await feed.open(id)
+    } catch (e) {
+      error.value = (e as Error).message
+      await router.replace({ name: 'admin' })
+      return
+    }
+    if (detail.value) activeTab.value = defaultTab(detail.value.tournament.status)
+  },
+  { immediate: true },
+)
+
 const floorNameOf = computed(() => {
   const map = new Map((detail.value?.floors ?? []).map((floor) => [floor.id, floor.name]))
   return (id: string | null) => (id ? (map.get(id) ?? '—') : 'Nicht zugewiesen')
@@ -149,9 +171,7 @@ async function deleteTournament() {
   if (!id) return
   await run(async () => {
     await api.deleteTournament(id)
-    feed.close()
-    detail.value = null
-    selectedId.value = null
+    await router.push({ name: 'admin' })
     await loadTournaments()
   })
 }

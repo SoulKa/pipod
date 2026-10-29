@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import type { Participant } from '@pipod/shared'
+import { computed } from 'vue'
 import { PlayerAvatar } from '@pipod/ui'
+import { useParticipants } from '../participants'
 
 // A player's avatar and name in the viewer. Tapping it opens their profile, where anyone
 // can set the picture — that is how players find their way there.
-withDefaults(
+const props = withDefaults(
   defineProps<{
-    participant: Participant | undefined
+    /** Null for a seat nobody holds yet. */
+    id: string | null
     size?: number
   }>(),
   { size: 24 },
 )
+
+const { participant: lookup } = useParticipants()
+const participant = computed(() => lookup(props.id))
 </script>
 
 <template>

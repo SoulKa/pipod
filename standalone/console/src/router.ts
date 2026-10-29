@@ -17,7 +17,8 @@ declare module 'vue-router' {
 const routes: RouteRecordRaw[] = [
   // Spectators land here (the QR codes link to it): it follows the active tournament.
   { path: '/', name: 'live', component: LiveView, meta: { bare: true } },
-  { path: '/admin', name: 'admin', component: AdminView },
+  // The open tournament is part of the URL, so reloads and the "Live" link follow it.
+  { path: '/admin/:id?', name: 'admin', component: AdminView, props: true },
   // Overview is per-tournament so it can be opened full-screen on a big display.
   { path: '/view/:id', name: 'view', component: OverviewView, props: true, meta: { bare: true } },
   // Where players set their own picture, reached by tapping their name in the viewer.

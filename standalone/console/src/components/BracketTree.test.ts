@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 import type { LiveMatchState, Match, Participant } from '@pipod/shared'
+import { participantsKey } from '../participants'
 import BracketTree from './BracketTree.vue'
 
 // happy-dom has no layout engine and so no scrollIntoView; the auto-scroll behaviour
@@ -53,8 +54,16 @@ function semisAndFinal(over: { final?: Partial<Match> } = {}): Match[] {
 
 function mountTree(matches: Match[], live = new Map<string, LiveMatchState>()) {
   return mount(BracketTree, {
-    props: { matches, participantOf, live },
-    global: { stubs: { RouterLink: RouterLinkStub } },
+    props: { matches, live },
+    global: {
+      stubs: { RouterLink: RouterLinkStub },
+      provide: {
+        [participantsKey]: {
+          participant: participantOf,
+          nameOf: (id: string | null) => participantOf(id)?.name ?? '—',
+        },
+      },
+    },
   })
 }
 

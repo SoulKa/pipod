@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, RouterLinkStub } from '@vue/test-utils'
 import type { LogLine } from '@pipod/shared'
 
 const lines = ref<LogLine[]>([])
@@ -15,7 +15,12 @@ vi.mock('./serverLogs', () => ({
 
 // The shell picks its layout from the current route; a console page unless a test says
 // otherwise.
-const route = reactive({ matched: [{}], meta: {} as { bare?: boolean } })
+const route = reactive({
+  matched: [{}],
+  meta: {} as { bare?: boolean },
+  name: undefined as string | undefined,
+  params: {} as Record<string, string>,
+})
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
   useRoute: () => route,
@@ -108,5 +113,21 @@ describe('App', () => {
     await wrapper.findAll('.log-actions button')[1]?.trigger('click')
 
     expect(clear).toHaveBeenCalled()
+  })
+
+  it('points "Live" at the viewer of the tournament open in the admin view', async () => {
+    const wrapper = mount(App, {
+      global: { stubs: { RouterLink: RouterLinkStub, RouterView: true } },
+    })
+    const live = () =>
+      wrapper.findAllComponents(RouterLinkStub).find((link) => link.text() === 'Live')!
+
+    expect(live().props('to')).toBe('/')
+    Object.assign(route, { name: 'admin', params: { id: 't1' } })
+    await wrapper.vm.$nextTick()
+    expect(live().props('to')).toBe('/view/t1')
+
+    Object.assign(route, { name: undefined, params: {} })
+    wrapper.unmount()
   })
 })

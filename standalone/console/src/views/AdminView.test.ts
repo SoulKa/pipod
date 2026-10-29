@@ -31,6 +31,8 @@ vi.mock('../feed', () => ({
     open: openSpy,
     close: vi.fn(),
     refresh: vi.fn(),
+    participant: (id: string | null) => detail.value?.participants.find((p) => p.id === id),
+    nameOf: (id: string | null) => detail.value?.participants.find((p) => p.id === id)?.name ?? '—',
   }),
 }))
 
@@ -41,6 +43,10 @@ vi.mock('../api', () => ({
     startTournament: vi.fn().mockResolvedValue([]),
   },
 }))
+
+const push = vi.fn()
+const replace = vi.fn()
+vi.mock('vue-router', () => ({ useRouter: () => ({ push, replace }) }))
 
 import { api } from '../api'
 import AdminView from './AdminView.vue'
@@ -73,6 +79,7 @@ async function mountAdmin(
   vi.mocked(api.listTournaments).mockResolvedValue([tournament(listed)])
   setDetail(selected, over)
   const view = mount(AdminView, {
+    props: { id: 't1' },
     global: { stubs: { RouterLink: true, ScheduleBoard: true } },
   })
   await flushPromises()
@@ -181,5 +188,20 @@ describe('AdminView phase setup', () => {
     await flushPromises()
 
     expect(vi.mocked(api.startTournament).mock.calls[0]![1].knockout).toMatchObject({ bestOf: 5 })
+  })
+
+  it('opens a tournament by putting it in the URL', async () => {
+    const view = await mountAdmin('setup', 'setup')
+    await view.find('.tournament-list button').trigger('click')
+    expect(push).toHaveBeenCalledWith({ name: 'admin', params: { id: 't1' } })
+    expect(openSpy).toHaveBeenCalledWith('t1')
+  })
+
+  it('falls back to the list, saying why, when the URL names a tournament that is gone', async () => {
+    openSpy.mockRejectedValueOnce(new Error('not found'))
+    const view = await mountAdmin('setup', 'setup')
+
+    expect(replace).toHaveBeenCalledWith({ name: 'admin' })
+    expect(view.find('.error').text()).toBe('not found')
   })
 })

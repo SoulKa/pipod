@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BoardGameSnapshot, BoardTournamentState, Match, MatchAssignment } from '@pipod/shared'
+import type { BoardGameSnapshot, BoardTournamentState, Match, MatchSeats } from '@pipod/shared'
 import { TAP_GUARD_MS } from '@pipod/ui'
 
 type Handler = (...args: unknown[]) => void
@@ -78,7 +78,7 @@ const MATCH: Match = {
   nextSlot: null,
 }
 
-const PARTICIPANTS: MatchAssignment['participants'] = [
+const PARTICIPANTS: MatchSeats = [
   { id: 'pa', name: 'Alice', avatar: null },
   { id: 'pb', name: 'Bob', avatar: null },
 ]

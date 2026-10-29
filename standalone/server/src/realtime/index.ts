@@ -5,8 +5,8 @@ import type {
   ClientToServerEvents,
   Floor,
   Match,
-  MatchAssignment,
   Seat,
+  MatchSeats,
   SeatPlayer,
   ServerToClientEvents,
   SocketData,
@@ -305,7 +305,7 @@ export function dispatchReadyFloors(tournamentId: string): void {
 }
 
 /** The match's two players in seat order; throws for a match a board can't be handed. */
-function participantsFor(match: Match): MatchAssignment['participants'] {
+function participantsFor(match: Match): MatchSeats {
   const byId = new Map(repo.listParticipants(match.tournamentId).map((p) => [p.id, p]))
   const seat = (id: string | null): SeatPlayer => {
     const participant = id ? byId.get(id) : undefined

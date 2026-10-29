@@ -29,6 +29,7 @@ import {
   createFloor,
   deleteFloor,
   deleteParticipant,
+  ParticipantInMatchError,
   deleteTournament,
   reactivateTournament,
   startTournament,
@@ -36,7 +37,7 @@ import {
 } from '../services/tournaments'
 import { assignMatchFloor, claimMatch, reorderFloorQueue, reportLeg } from '../services/matches'
 import { maybeAutoAssign, runAutoAssign, setAutoAssign } from '../services/scheduler'
-import { isJpeg, setAvatar } from '../services/avatars'
+import { clearAvatar, isJpeg, setAvatarEmoji, setAvatarPhoto } from '../services/avatars'
 import {
   broadcastMatch,
   broadcastParticipant,
@@ -175,7 +176,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       deleteParticipant(id)
       return { ok: true }
     } catch (err) {
-      return reply.code(400).send({ error: (err as Error).message })
+      if (err instanceof ParticipantInMatchError) {
+        return reply.code(400).send({ error: err.message })
+      }
+      throw err
     }
   })
 
@@ -208,19 +212,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!Buffer.isBuffer(req.body) || !isJpeg(req.body)) {
       return reply.code(400).send({ error: 'expected a JPEG image' })
     }
-    return participantChanged(reply, setAvatar(id, { photo: req.body }))
+    return participantChanged(reply, setAvatarPhoto(id, req.body))
   })
 
   app.put('/api/participants/:id/avatar/emoji', async (req, reply) => {
     const { id } = req.params as { id: string }
     const parsed = setAvatarEmojiSchema.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'expected a single emoji' })
-    return participantChanged(reply, setAvatar(id, { emoji: parsed.data.emoji }))
+    return participantChanged(reply, setAvatarEmoji(id, parsed.data.emoji))
   })
 
   app.delete('/api/participants/:id/avatar', async (req, reply) => {
     const { id } = req.params as { id: string }
-    return participantChanged(reply, setAvatar(id, null))
+    return participantChanged(reply, clearAvatar(id))
   })
 
   app.put('/api/tournaments/:id/phases', async (req, reply) => {

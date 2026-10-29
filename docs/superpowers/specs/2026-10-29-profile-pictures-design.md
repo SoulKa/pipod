@@ -91,12 +91,13 @@ Schema (`src/db/schema.ts`, then `db:generate`):
 
 - `participants`: add a nullable JSON `avatar` column (`text({ mode: 'json' })` typed as
   `ParticipantAvatar`), so a participant can hold a photo or an emoji but never both.
-- New `participant_photos` table: `participant_id text primary key`, `data blob not null`
-  (Drizzle `blob({ mode: 'buffer' })`), `updated_at text not null`.
+- New `participant_photos` table: `participant_id text primary key` referencing
+  `participants.id` with `ON DELETE CASCADE` (the schema's first foreign key), and
+  `data blob not null` (Drizzle `blob({ mode: 'buffer' })`).
 
 The row shape is the domain shape, so the repo needs no mapping. The blob is never selected
-there, so snapshots stay small. All writes go through one `setAvatar(id, change)` service, which
-updates the column and the photo row in one transaction.
+there, so snapshots stay small. `setAvatarPhoto`, `setAvatarEmoji` and `clearAvatar` share one
+private write path that updates the column and the photo row in one transaction.
 
 Routes:
 

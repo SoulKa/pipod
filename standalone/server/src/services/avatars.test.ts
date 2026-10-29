@@ -3,7 +3,7 @@ import { avatarHue, avatarInitials, isSingleEmoji } from '@pipod/shared'
 import { resetDb } from '../test/db'
 import { withPlayers } from '../test/tournaments'
 import { repo } from '../repo'
-import { isJpeg, photoVersion, setAvatar } from './avatars'
+import { clearAvatar, isJpeg, photoVersion, setAvatarEmoji, setAvatarPhoto } from './avatars'
 import { deleteParticipant, deleteTournament } from './tournaments'
 
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
@@ -33,7 +33,7 @@ describe('avatarInitials / avatarHue', () => {
   })
 })
 
-describe('setAvatar', () => {
+describe('avatar writes', () => {
   beforeEach(resetDb)
 
   const photoVersionOf = (id: string) => {
@@ -50,14 +50,14 @@ describe('setAvatar', () => {
     const { players } = withPlayers(1)
     const id = players[0]!.id
     const other = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x20])
-    setAvatar(id, { photo: jpeg })
+    setAvatarPhoto(id, jpeg)
     const first = photoVersionOf(id)
-    setAvatar(id, { photo: other })
+    setAvatarPhoto(id, other)
     expect(photoVersionOf(id)).not.toBe(first)
     expect(repo.getParticipantPhoto(id)).toEqual(other)
 
     // The same bytes again are the same photo, so the cached URL stays right.
-    setAvatar(id, { photo: jpeg })
+    setAvatarPhoto(id, jpeg)
     expect(photoVersionOf(id)).toBe(first)
   })
 
@@ -65,10 +65,10 @@ describe('setAvatar', () => {
     // Nothing remembers the old version while the emoji is set; the bytes decide.
     const { players } = withPlayers(1)
     const id = players[0]!.id
-    setAvatar(id, { photo: jpeg })
+    setAvatarPhoto(id, jpeg)
     const first = photoVersionOf(id)
-    setAvatar(id, { emoji: '🦊' })
-    setAvatar(id, { photo: jpeg })
+    setAvatarEmoji(id, '🦊')
+    setAvatarPhoto(id, jpeg)
     expect(photoVersionOf(id)).toBe(first)
     expect(first).toBe(photoVersion(jpeg))
   })
@@ -76,8 +76,8 @@ describe('setAvatar', () => {
   it('swaps a photo for an emoji and drops the image', () => {
     const { players } = withPlayers(1)
     const id = players[0]!.id
-    setAvatar(id, { photo: jpeg })
-    expect(setAvatar(id, { emoji: '🦊' })!.avatar).toEqual({ kind: 'emoji', emoji: '🦊' })
+    setAvatarPhoto(id, jpeg)
+    expect(setAvatarEmoji(id, '🦊')!.avatar).toEqual({ kind: 'emoji', emoji: '🦊' })
     expect(repo.getParticipant(id)!.avatar).toEqual({ kind: 'emoji', emoji: '🦊' })
     expect(repo.getParticipantPhoto(id)).toBeUndefined()
   })
@@ -85,24 +85,24 @@ describe('setAvatar', () => {
   it('clears either kind', () => {
     const { players } = withPlayers(2)
     const [a, b] = players.map((p) => p.id)
-    setAvatar(a!, { photo: jpeg })
-    setAvatar(b!, { emoji: '🐙' })
-    setAvatar(a!, null)
-    setAvatar(b!, null)
+    setAvatarPhoto(a!, jpeg)
+    setAvatarEmoji(b!, '🐙')
+    clearAvatar(a!)
+    clearAvatar(b!)
     expect(repo.getParticipant(a!)!.avatar).toBeNull()
     expect(repo.getParticipant(b!)!.avatar).toBeNull()
     expect(repo.getParticipantPhoto(a!)).toBeUndefined()
   })
 
   it('returns undefined for an unknown participant', () => {
-    expect(setAvatar('nobody', { emoji: '🍺' })).toBeUndefined()
+    expect(setAvatarEmoji('nobody', '🍺')).toBeUndefined()
   })
 
   it('deletes photos with their participant or tournament', () => {
     const { tournament, players } = withPlayers(2)
     const [a, b] = players.map((p) => p.id)
-    setAvatar(a!, { photo: jpeg })
-    setAvatar(b!, { photo: jpeg })
+    setAvatarPhoto(a!, jpeg)
+    setAvatarPhoto(b!, jpeg)
 
     deleteParticipant(a!)
     expect(repo.getParticipantPhoto(a!)).toBeUndefined()

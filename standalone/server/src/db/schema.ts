@@ -32,11 +32,13 @@ export const participants = sqliteTable(
 )
 
 // Photo bytes live apart from `participants`, so listing participants for every
-// snapshot never drags images along.
+// snapshot never drags images along. The schema's first foreign key: a photo goes with
+// its participant, whichever path deletes them.
 export const participantPhotos = sqliteTable('participant_photos', {
-  participantId: text('participant_id').primaryKey(),
+  participantId: text('participant_id')
+    .primaryKey()
+    .references(() => participants.id, { onDelete: 'cascade' }),
   data: blob('data', { mode: 'buffer' }).notNull(),
-  updatedAt: text('updated_at').notNull(),
 })
 
 export const floors = sqliteTable(

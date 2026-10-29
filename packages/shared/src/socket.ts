@@ -36,6 +36,9 @@ export type LegResultResponse = { ok: true; match: Match } | { ok: false; messag
 /** A match seat's player, as a board shows them. */
 export type SeatPlayer = Pick<Participant, 'id' | 'name' | 'avatar'>
 
+/** A match's two players in seat order (A, B). */
+export type MatchSeats = [SeatPlayer, SeatPlayer]
+
 /** Match config the server hands to a board that has claimed a match. */
 export interface MatchAssignment {
   match: Match
@@ -43,7 +46,7 @@ export interface MatchAssignment {
    * Both players in seat order (A, B). Only ready matches are dispatched, and a match is
    * ready only once both seats are filled, so a board never sees an empty seat.
    */
-  participants: [SeatPlayer, SeatPlayer]
+  participants: MatchSeats
 }
 
 /** The persisted state returned after registering a floor board or saving a snapshot. */

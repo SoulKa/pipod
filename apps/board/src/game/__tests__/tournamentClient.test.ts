@@ -126,6 +126,26 @@ describe('tournamentClient', () => {
   })
 })
 
+describe('participant updates', () => {
+  it('refresh the seats without touching the dispatched assignment', async () => {
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+    sockets[0]!.fire('connect')
+    const ann = { id: 'p1', name: 'Ann', avatar: null }
+    const bob = { id: 'p2', name: 'Bob', avatar: null }
+    sockets[0]!.fire('match:assigned', { match: { id: 'm1' }, participants: [ann, bob] })
+    const dispatched = client.assignment.value
+
+    const fox = { kind: 'emoji', emoji: '🦊' } as const
+    sockets[0]!.fire('participant:updated', { ...bob, tournamentId: 't1', seed: null, avatar: fox })
+
+    // A new assignment would restart the match; only the seats change.
+    expect(client.assignment.value).toBe(dispatched)
+    expect(client.assignment.value?.participants[1]).toEqual(bob)
+    expect(client.seats.value).toEqual([ann, { ...bob, avatar: fox }])
+  })
+})
+
 describe('choosing a tournament', () => {
   function serve(body: unknown) {
     vi.stubGlobal(

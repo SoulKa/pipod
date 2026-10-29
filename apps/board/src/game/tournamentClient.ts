@@ -8,6 +8,8 @@ import {
   type ClientToServerEvents,
   type Floor,
   type MatchAssignment,
+  type MatchSeats,
+  type SeatPlayer,
   type Multiplier,
   type ServerToClientEvents,
   type Tournament,
@@ -29,7 +31,11 @@ const tournaments = ref<Tournament[]>([])
 const tournamentId = ref('')
 const floors = ref<Floor[]>([])
 const floorId = ref('')
+// What the server dispatched, never changed afterwards: a new value here means a new
+// match, which the board restarts on.
 const assignment = ref<MatchAssignment | null>(null)
+// The assigned match's players as they are now — renames and new pictures land here.
+const seats = ref<MatchSeats | null>(null)
 const session = ref<BoardSession>({ snapshot: null, revision: 0 })
 const errorMsg = ref('')
 // Kept apart from `errorMsg`, which every (re)connect clears: on a resumed launch link
@@ -130,11 +136,14 @@ function connect(host: string): void {
     })
   })
   next.on('disconnect', () => (connected.value = false))
-  next.on('match:assigned', (value) => (assignment.value = value))
-  // Patched in place: replacing the assignment would restart the match it belongs to.
-  next.on('participant:updated', (participant) => {
-    const entry = assignment.value?.participants.find((p) => p.id === participant.id)
-    if (entry) Object.assign(entry, { name: participant.name, avatar: participant.avatar })
+  next.on('match:assigned', (value) => {
+    assignment.value = value
+    seats.value = value.participants
+  })
+  next.on('participant:updated', ({ id, name, avatar }) => {
+    if (!seats.value) return
+    const swap = (seat: SeatPlayer) => (seat.id === id ? { id, name, avatar } : seat)
+    seats.value = [swap(seats.value[0]), swap(seats.value[1])]
   })
   next.on('board:session', (value) => (session.value = value))
   next.on('error:message', (message) => (errorMsg.value = message))
@@ -187,6 +196,7 @@ function reportThrow(_participantId: string, _base: number, _multiplier: Multipl
 
 function clearAssignment(): void {
   assignment.value = null
+  seats.value = null
 }
 
 export function useTournamentClient() {
@@ -199,6 +209,7 @@ export function useTournamentClient() {
     floors,
     floorId,
     assignment,
+    seats,
     session,
     errorMsg,
     selectError,

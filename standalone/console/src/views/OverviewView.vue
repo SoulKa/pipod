@@ -6,6 +6,7 @@ import { phaseLabel } from '../phases'
 import BracketTree from '../components/BracketTree.vue'
 import IdleBoard from '../components/IdleBoard.vue'
 import PlayerTag from '../components/PlayerTag.vue'
+import { provideParticipants } from '../participants'
 import ViewerQrButton from '../components/ViewerQrButton.vue'
 
 const props = defineProps<{
@@ -15,16 +16,12 @@ const props = defineProps<{
 }>()
 
 const feed = useTournamentFeed()
-const { detail, standings, live, connected } = feed
+const { detail, standings, live, connected, nameOf } = feed
 
 onMounted(() => feed.open(props.id))
 onUnmounted(() => feed.close())
 
-const participantOf = computed(() => {
-  const map = new Map((detail.value?.participants ?? []).map((p) => [p.id, p]))
-  return (id: string | null) => (id ? map.get(id) : undefined)
-})
-const nameOf = (id: string | null) => participantOf.value(id)?.name ?? '—'
+provideParticipants(feed)
 
 const liveMatches = computed(() => (detail.value?.matches ?? []).filter((m) => m.status === 'live'))
 
@@ -97,9 +94,7 @@ const champion = computed(() => {
       <div v-if="liveMatches.length" class="live-strip">
         <article v-for="m in liveMatches" :key="m.id" class="pd-panel live-card">
           <div class="live-player">
-            <span class="pname"
-              ><PlayerTag :participant="participantOf(m.participantAId)" :size="40"
-            /></span>
+            <PlayerTag class="pname" :id="m.participantAId" :size="40" />
             <strong class="pscore">{{
               live.get(m.id)?.scores.find((s) => s.participantId === m.participantAId)?.remaining ??
               m.startScore
@@ -112,9 +107,7 @@ const champion = computed(() => {
             >
           </div>
           <div class="live-player">
-            <span class="pname"
-              ><PlayerTag :participant="participantOf(m.participantBId)" :size="40"
-            /></span>
+            <PlayerTag class="pname" :id="m.participantBId" :size="40" />
             <strong class="pscore">{{
               live.get(m.id)?.scores.find((s) => s.participantId === m.participantBId)?.remaining ??
               m.startScore
@@ -143,7 +136,7 @@ const champion = computed(() => {
       </div>
       <ul class="player-grid">
         <li v-for="p in detail.participants" :key="p.id">
-          <PlayerTag :participant="p" :size="36" />
+          <PlayerTag :id="p.id" :size="36" />
         </li>
       </ul>
     </section>
@@ -170,7 +163,7 @@ const champion = computed(() => {
             </thead>
             <tbody>
               <tr v-for="s in standings" :key="s.participantId">
-                <td><PlayerTag :participant="participantOf(s.participantId)" /></td>
+                <td><PlayerTag :id="s.participantId" /></td>
                 <td>{{ s.played }}</td>
                 <td>{{ s.wins }}</td>
                 <td>{{ s.legDiff }}</td>
@@ -206,18 +199,23 @@ const champion = computed(() => {
             <BracketTree
               v-if="matches.length && stage.type === 'knockout'"
               :matches="matches"
-              :participant-of="participantOf"
               :live="live"
             />
             <div v-else-if="matches.length" class="match-list">
               <div v-for="m in matches" :key="m.id" class="match-row">
-                <span :class="{ win: m.winnerId === m.participantAId }"
-                  ><PlayerTag :participant="participantOf(m.participantAId)" :size="20"
-                /></span>
+                <PlayerTag
+                  class="side"
+                  :class="{ win: m.winnerId === m.participantAId }"
+                  :id="m.participantAId"
+                  :size="20"
+                />
                 <strong class="score">{{ m.legsA }}–{{ m.legsB }}</strong>
-                <span :class="{ win: m.winnerId === m.participantBId }"
-                  ><PlayerTag :participant="participantOf(m.participantBId)" :size="20"
-                /></span>
+                <PlayerTag
+                  class="side"
+                  :class="{ win: m.winnerId === m.participantBId }"
+                  :id="m.participantBId"
+                  :size="20"
+                />
               </div>
             </div>
             <p v-else class="pd-muted">
@@ -354,6 +352,10 @@ const champion = computed(() => {
   text-align: right;
 }
 
+.live-player:last-child .pname {
+  justify-self: end;
+}
+
 .pname {
   overflow: hidden;
   color: var(--pd-text-soft);
@@ -479,14 +481,8 @@ const champion = computed(() => {
   border-bottom: 1px solid var(--pd-border);
 }
 
-.match-row span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.match-row span:last-child {
-  text-align: right;
+.match-row .side:last-child {
+  justify-self: end;
 }
 
 .score {
@@ -534,6 +530,10 @@ const champion = computed(() => {
 
   .live-player:last-child {
     text-align: left;
+  }
+
+  .live-player:last-child .pname {
+    justify-self: start;
   }
 
   .live-divider {

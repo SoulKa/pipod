@@ -4,7 +4,7 @@ import {
   legStarterSeat,
   type BoardGameSnapshot,
   type Match,
-  type MatchAssignment,
+  type MatchSeats,
   type Seat,
 } from '@pipod/shared'
 import { vTapGuard } from '@pipod/ui'
@@ -62,11 +62,6 @@ function legsToWin(bestOf: number): number {
   return Math.floor(bestOf / 2) + 1
 }
 
-type Seats = MatchAssignment['participants']
-
-// Seat names in server order, so seat indices stay aligned with `matchIds`.
-const namesOf = (seats: Seats): [string, string] => [seats[0].name, seats[1].name]
-
 // A leg that already has darts in it predates the starter choice (an upgrade mid-match,
 // or a snapshot the server seeded before anyone picked). Keep its original seat-0 throw
 // rather than interrupting live play with the starter screen.
@@ -83,11 +78,13 @@ function starterOf(snapshot: BoardGameSnapshot): Seat | null {
 // Start one leg of the current assigned match using the shared game engine.
 function startLeg() {
   const a = tour.assignment.value
+  const seats = tour.seats.value
   const starter = firstLegStarter.value
-  if (!a || starter === null) return
+  if (!a || !seats || starter === null) return
   const m = a.match
   startGame({
-    names: namesOf(a.participants),
+    // Seat names in server order, so seat indices stay aligned with `matchIds`.
+    names: [seats[0].name, seats[1].name],
     startScore: m.startScore,
     outMode: m.outMode,
     startIndex: legStarterSeat(starter, legIndex.value),
@@ -141,13 +138,13 @@ function chooseStarter(seat: Seat) {
 }
 
 type BoardScreen =
-  { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match; seats: Seats }
+  { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match; seats: MatchSeats }
 
 // Which screen the board shows. A match is introduced, then its starter picked, then played.
 const screen = computed<BoardScreen>(() => {
-  const a = tour.assignment.value
-  if (!tournamentMode.value || !a) return { kind: 'lobby' }
-  const { match, participants: seats } = a
+  const match = tour.assignment.value?.match
+  const seats = tour.seats.value
+  if (!tournamentMode.value || !match || !seats) return { kind: 'lobby' }
   if (firstLegStarter.value !== null) return { kind: 'game', match, seats }
   return { kind: introConfirmedFor.value === match.id ? 'starter' : 'intro', match, seats }
 })
@@ -263,7 +260,7 @@ async function reportLegAndContinue() {
 
     <StarterScreen
       v-else-if="screen.kind === 'starter'"
-      :names="namesOf(screen.seats)"
+      :players="screen.seats"
       @select="chooseStarter"
     />
 

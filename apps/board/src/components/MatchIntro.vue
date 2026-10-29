@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Match, MatchAssignment } from '@pipod/shared'
+import type { Match, MatchSeats } from '@pipod/shared'
 import { PlayerAvatar } from '@pipod/ui'
 
-const SEATS = [0, 1] as const
-
 const props = defineProps<{
-  players: MatchAssignment['participants']
+  players: MatchSeats
   match: Pick<Match, 'bestOf' | 'startScore' | 'outMode'>
   /** Server origin the players' photos are fetched from. */
   serverUrl: string
@@ -30,21 +28,28 @@ const details = computed(() => {
     </header>
 
     <div class="matchup">
-      <template v-for="seat in SEATS" :key="seat">
-        <div class="plate" :class="seat === 0 ? 'plate-a' : 'plate-b'">
-          <PlayerAvatar
-            class="seat-avatar"
-            :participant="players[seat]"
-            :origin="serverUrl"
-            :size="144"
-          />
-          <span class="name">{{ players[seat].name }}</span>
-        </div>
-        <div v-if="seat === 0" class="vs">
-          <span class="ring" />
-          <span class="vs-text">VS</span>
-        </div>
-      </template>
+      <div class="plate plate-a">
+        <PlayerAvatar
+          class="seat-avatar"
+          :participant="players[0]"
+          :origin="serverUrl"
+          :size="144"
+        />
+        <span class="name">{{ players[0].name }}</span>
+      </div>
+      <div class="vs">
+        <span class="ring" />
+        <span class="vs-text">VS</span>
+      </div>
+      <div class="plate plate-b">
+        <PlayerAvatar
+          class="seat-avatar"
+          :participant="players[1]"
+          :origin="serverUrl"
+          :size="144"
+        />
+        <span class="name">{{ players[1].name }}</span>
+      </div>
     </div>
 
     <button class="game-on" @click="emit('confirm')">Game on!</button>
