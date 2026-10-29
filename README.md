@@ -69,6 +69,21 @@ self-updates them from the GitHub Release the launcher points at (`GITHUB_OWNER`
 `standalone/launcher/src/main/config.ts`). The UI targets the Pi's portrait touchscreen and
 assumes touch input.
 
+A fresh Raspberry Pi OS (desktop) image needs two extra packages:
+
+```sh
+sudo apt install libfuse2t64 fonts-noto-color-emoji
+```
+
+- **`libfuse2t64`** — the launcher ships as an AppImage, which can't start without FUSE 2 (and
+  self-update only works for the AppImage). `apt autoremove` may remove it if it was pulled in
+  automatically; installing it explicitly marks it as manual.
+- **`fonts-noto-color-emoji`** — the apps use emoji as icons; without a color emoji font some of
+  them (e.g. the store tile, the fog weather icon) don't render.
+
+Start the launcher from the Pi's desktop session (autostart or a terminal there). From SSH it
+fails with `Missing X server or $DISPLAY`; prefix `DISPLAY=:0` to put it on the Pi's screen.
+
 ## Running the tournament server
 
 ```sh
