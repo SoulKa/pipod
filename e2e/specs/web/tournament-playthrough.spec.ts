@@ -162,6 +162,9 @@ async function playMatch(
  * screen to accept input. A bounce that lands shows up as a broken script, not here.
  */
 async function bouncyTap(board: Page, button: Locator): Promise<void> {
+  // The button's screen may still be on its way in (a dispatched match arrives whenever the
+  // server sends it); checking the guard before it exists would pass on the previous screen.
+  await button.waitFor()
   await waitUntilArmed(board)
   await button.click({ trial: true })
   const box = (await button.boundingBox())!
