@@ -255,6 +255,18 @@ export function advancePhases(tournamentId: string): Match[] {
   return generateStage(knockout)
 }
 
+/**
+ * Winner of the knockout final — the one match the bracket feeds into and nothing
+ * follows. Null while it is undecided, and for a group-only tournament.
+ */
+export function tournamentChampion(tournamentId: string): Participant | null {
+  const knockout = repo.getKnockoutStage(tournamentId)
+  if (!knockout) return null
+  const final = repo.listStageMatches(knockout.id).find((m) => m.nextMatchId === null)
+  if (!final?.winnerId) return null
+  return repo.listParticipants(tournamentId).find((p) => p.id === final.winnerId) ?? null
+}
+
 /** Sort participants by seed (unseeded last), then name — the default seeding. */
 function bySeed(a: Participant, b: Participant): number {
   const sa = a.seed ?? Number.POSITIVE_INFINITY

@@ -115,6 +115,18 @@ export const boardGameSnapshotSchema = turnSnapshotSchema
   })
   .superRefine(validateTurnState)
 
+/**
+ * Whether a dart of the snapshot's match has been thrown. Up to then a dispatched match
+ * can still be taken back from its board; afterwards it stays on its floor.
+ */
+export function hasPlayStarted(snapshot: BoardGameSnapshot): boolean {
+  return (
+    (snapshot.tournament?.legIndex ?? 0) > 0 ||
+    snapshot.history.length > 0 ||
+    snapshot.currentThrows.length > 0
+  )
+}
+
 export const boardSnapshotPayloadSchema = z.object({
   snapshot: boardGameSnapshotSchema,
   expectedRevision: z.number().int().min(0),

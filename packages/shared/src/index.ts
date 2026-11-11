@@ -9,6 +9,7 @@ export {
   boardTurnSnapshotSchema,
   dartThrowSchema,
   gameOptionsSchema,
+  hasPlayStarted,
   legStarterSeat,
   multiplierSchema,
   seatSchema,

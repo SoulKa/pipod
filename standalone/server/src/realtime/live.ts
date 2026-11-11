@@ -1,7 +1,7 @@
 // Overview live state is derived from the board's durable full snapshot, never from
 // an independently reconstructed sequence of per-dart socket messages.
 import type { BoardGameSnapshot, LiveMatchState, Match, Seat } from '@pipod/shared'
-import { legStarterSeat } from '@pipod/shared'
+import { hasPlayStarted, legStarterSeat } from '@pipod/shared'
 
 /**
  * Seed the snapshot for a match's next leg. `firstLegStarter` carries the board's
@@ -52,6 +52,7 @@ export function deriveLiveMatchState(snapshot: BoardGameSnapshot): LiveMatchStat
     currentParticipantId: tournament.participantIds[snapshot.currentPlayerIndex] ?? null,
     legsA: tournament.legsA,
     legsB: tournament.legsB,
+    started: hasPlayStarted(snapshot),
     scores: tournament.participantIds.map((participantId, index) => {
       const player = snapshot.players[index]
       return {

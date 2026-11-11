@@ -44,7 +44,13 @@ import {
   broadcastSnapshot,
   broadcastTournamentList,
 } from '../realtime/hub'
-import { dispatchQueuedFloorMatch, dispatchReadyFloors } from '../realtime'
+import {
+  announceTournamentOver,
+  dispatchQueuedFloorMatch,
+  dispatchReadyFloors,
+  occupiedFloorIds,
+  recallFloorMatch,
+} from '../realtime'
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/health', async () => ({ ok: true }))
@@ -84,6 +90,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           memberIds: repo.listGroupMembers(g.id),
         })),
       ),
+      occupiedFloorIds: occupiedFloorIds(id),
     } satisfies TournamentDetail
   })
 
@@ -280,7 +287,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string }
     const { floorId, position } = assignMatchFloorSchema.parse(req.body)
     try {
+      const before = repo.getMatch(id)
       const assigned = assignMatchFloor(id, floorId, position)
+      // A dispatched match taken back: its board drops it and gets the floor's next one.
+      if (before?.status === 'live' && before.floorId) recallFloorMatch(before, before.floorId)
       // An idle connected floor starts its front match; a busy floor just queues this one.
       if (floorId) dispatchQueuedFloorMatch(floorId)
       const match = repo.getMatch(id) ?? assigned
@@ -337,6 +347,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         advancePhases(match.tournamentId)
         maybeAutoAssign(match.tournamentId)
         dispatchReadyFloors(match.tournamentId)
+        announceTournamentOver(match.tournamentId)
       }
       broadcastSnapshot(match.tournamentId)
       return match

@@ -10,13 +10,14 @@ import type {
   SeatPlayer,
   ServerToClientEvents,
   SocketData,
+  TournamentOver,
 } from '@pipod/shared'
 import { boardSnapshotPayloadSchema, isOpenTournament } from '@pipod/shared'
 import { log, subscribeToLogs } from '../logger'
 import { repo } from '../repo'
 import { dispatchMatch, reportLeg } from '../services/matches'
 import { maybeAutoAssign } from '../services/scheduler'
-import { advancePhases } from '../services/tournaments'
+import { advancePhases, tournamentChampion } from '../services/tournaments'
 import {
   clearFloorSession,
   ensureFloorSession,
@@ -77,14 +78,19 @@ export function setupRealtime(io: IoServer): () => void {
       )
     })
 
-    socket.on('board:register', ({ boardId, tournamentId, floorId }) => {
+    socket.on('board:register', ({ boardId, tournamentId, floorId }, reply) => {
       const checked = checkRegistration(io, socket, tournamentId, floorId)
       if ('refusal' in checked) {
         log.warn(
           { board: boardId, floor: checked.floor?.name ?? floorId, tournament: tournamentId },
           `board registration rejected: ${checked.refusal}`,
         )
-        socket.emit('error:message', checked.refusal)
+        // A board that was offline for the final still gets to see who won.
+        const over = tournamentOver(tournamentId)
+        if (over) socket.emit('tournament:over', over)
+        // Boards that predate the acknowledgement only ever saw the error message.
+        if (typeof reply === 'function') reply({ ok: false, message: checked.refusal })
+        else socket.emit('error:message', checked.refusal)
         return
       }
       const { floor, room: nextFloorRoom } = checked
@@ -96,6 +102,9 @@ export function setupRealtime(io: IoServer): () => void {
       socket.data.floorId = floorId
       socket.join(roomFor(tournamentId))
       socket.join(nextFloorRoom)
+      // Acknowledged before the session and any assignment, so the board has left its
+      // floor picker by the time they arrive.
+      if (typeof reply === 'function') reply({ ok: true })
       const session = ensureFloorSession(floor)
       const live = repo
         .listMatches(tournamentId)
@@ -132,6 +141,15 @@ export function setupRealtime(io: IoServer): () => void {
       socket.join(roomFor(tournamentId))
       const snapshot = buildSnapshot(tournamentId)
       if (snapshot) socket.emit('tournament:state', snapshot)
+      // Live scores are otherwise only pushed as they change; the console needs them up
+      // front, e.g. to know which dispatched match has not started yet and can be moved.
+      for (const match of snapshot?.matches ?? []) {
+        if (match.status !== 'live' || !match.floorId) continue
+        const session = getFloorSession(match.floorId)
+        const state = session?.matchId === match.id && session.snapshot
+        const live = state ? deriveLiveMatchState(state) : null
+        if (live) socket.emit('match:live', live)
+      }
       log.debug({ socket: socket.id, tournament: tournamentId }, 'client subscribed to tournament')
     })
 
@@ -228,6 +246,9 @@ export function setupRealtime(io: IoServer): () => void {
           advancePhases(match.tournamentId)
           maybeAutoAssign(match.tournamentId)
           dispatchReadyFloors(match.tournamentId)
+          // Before the ack: the reporting board then leaves its match for the winner
+          // screen rather than for the floor picker of a tournament that is over.
+          announceTournamentOver(match.tournamentId)
         }
         broadcastSnapshot(match.tournamentId)
         reply?.({ ok: true, match })
@@ -289,6 +310,48 @@ export function dispatchFloorMatch(match: Match): Match | null {
     'match started on floor',
   )
   return liveMatch
+}
+
+/**
+ * Tell a floor's board its dispatched match was taken back (see `assignMatchFloor`),
+ * hand it the cleared session, and start the floor's next queued match.
+ */
+export function recallFloorMatch(match: Match, floorId: string): void {
+  if (ioServer) {
+    const room = floorRoomFor(match.tournamentId, floorId)
+    ioServer.to(room).emit('match:withdrawn', { matchId: match.id })
+    const session = getFloorSession(floorId)
+    if (session) ioServer.to(room).emit('board:session', toBoardSession(session))
+  }
+  dispatchQueuedFloorMatch(floorId)
+}
+
+/** Floors of a tournament with a board connected right now. */
+export function occupiedFloorIds(tournamentId: string): string[] {
+  const rooms = ioServer?.sockets.adapter.rooms
+  if (!rooms) return []
+  return repo
+    .listFloors(tournamentId)
+    .filter((floor) => rooms.get(floorRoomFor(tournamentId, floor.id))?.size)
+    .map((floor) => floor.id)
+}
+
+/** The winner announcement, or null while the tournament is not completed. */
+function tournamentOver(tournamentId: string): TournamentOver | null {
+  if (repo.getTournament(tournamentId)?.status !== 'completed') return null
+  const champion = tournamentChampion(tournamentId)
+  return {
+    tournamentId,
+    champion: champion && { id: champion.id, name: champion.name, avatar: champion.avatar },
+  }
+}
+
+/** Show every board of a completed tournament its winner. No-op while it is still open. */
+export function announceTournamentOver(tournamentId: string): void {
+  const over = tournamentOver(tournamentId)
+  if (!over || !ioServer) return
+  ioServer.to(roomFor(tournamentId)).emit('tournament:over', over)
+  log.info({ tournament: tournamentId, champion: over.champion?.name }, 'tournament over')
 }
 
 /** Dispatch a floor's next ready match (queue order), unless a match is already live on it. */

@@ -131,4 +131,6 @@ export interface TournamentDetail {
   stages: Stage[]
   matches: Match[]
   groups: GroupView[]
+  /** Floors a board is connected to right now; a board picking a floor skips these. */
+  occupiedFloorIds: string[]
 }

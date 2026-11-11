@@ -4,6 +4,7 @@
 import { io as connect, type Socket } from 'socket.io-client'
 import type {
   BoardGameSnapshot,
+  BoardRegisterResponse,
   BoardSession,
   BoardSnapshotResponse,
   ClientToServerEvents,
@@ -102,13 +103,26 @@ export class BoardClient {
 
   /** Bind to a floor and wait for the session the server replies with. */
   async register(tournamentId: string, floorId: string): Promise<BoardSession> {
-    this.sendRegister(tournamentId, floorId)
-    return this.events.wait('board:session')
+    const [response, session] = await Promise.all([
+      this.sendRegister(tournamentId, floorId),
+      this.events.wait('board:session'),
+    ])
+    if (!response.ok) throw new Error(`registration refused: ${response.message}`)
+    return session
   }
 
   /** Register without awaiting a session — registration can be refused instead. */
-  sendRegister(tournamentId: string, floorId: string): void {
-    this.socket.emit('board:register', { boardId: this.boardId, tournamentId, floorId })
+  sendRegister(tournamentId: string, floorId: string): Promise<BoardRegisterResponse> {
+    return withTimeout(
+      this.socket.emitWithAck('board:register', { boardId: this.boardId, tournamentId, floorId }),
+      'board:register',
+    )
+  }
+
+  /** Register the way boards did before registration was acknowledged. */
+  sendLegacyRegister(tournamentId: string, floorId: string): void {
+    const emit = this.socket.emit.bind(this.socket) as (event: string, payload: unknown) => void
+    emit('board:register', { boardId: this.boardId, tournamentId, floorId })
   }
 
   /** Next match dispatched to this floor, or null if none arrives in `timeoutMs`. */

@@ -138,7 +138,8 @@ async function mountBoard() {
   const socket = sockets[0]!
   socket.fire('connect')
   client.tournamentId.value = MATCH.tournamentId
-  client.selectFloor(MATCH.floorId!)
+  void client.selectFloor(MATCH.floorId!)
+  socket.ack('board:register', null, { ok: true })
   return { wrapper, socket, client }
 }
 
@@ -500,5 +501,99 @@ describe('TournamentBoard leg reporting', () => {
 
     expect(client.assignment.value?.match.id).toBe('match-2')
     expect(wrapper.text()).not.toContain('Board verbunden')
+  })
+})
+
+describe('TournamentBoard tournament end', () => {
+  const OVER = { tournamentId: 't1', champion: PARTICIPANTS[1] }
+
+  it('crowns the champion once the final is reported', async () => {
+    const { wrapper, socket, report } = await mountAtLegEnd()
+    await report.trigger('click')
+    // The server announces the end before it acknowledges the deciding leg.
+    socket.fire('tournament:over', OVER)
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Turniersieger')
+
+    socket.ack('match:legResult', null, { ok: true, match: { ...MATCH, status: 'completed' } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Turniersieger')
+    expect(wrapper.text()).toContain('Bob')
+  })
+
+  it('crowns the champion on an idle board too', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('tournament:over', OVER)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Turniersieger')
+  })
+
+  it('ignores the end of a tournament the board is not in', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('tournament:over', { ...OVER, tournamentId: 'other' })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Board verbunden')
+  })
+
+  it('returns to the tournament list from the champion screen', async () => {
+    const { wrapper, socket, client } = await mountBoard()
+    // What the wizard saved on the way in.
+    window.history.replaceState(null, '', '/?ip=192.168.0.5&tournamentId=t1&floorId=f1')
+    socket.fire('tournament:over', OVER)
+    await waitOutGuard(wrapper)
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Zur Turnierauswahl')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(client.tournamentId.value).toBe('')
+    expect(client.floorId.value).toBe('')
+    expect(client.over.value).toBeNull()
+    const params = new URLSearchParams(window.location.search)
+    expect(params.get('tournamentId')).toBeNull()
+    expect(params.get('floorId')).toBeNull()
+    expect(wrapper.text()).toContain('Turnier beitreten')
+  })
+})
+
+describe('TournamentBoard withdrawn match', () => {
+  it('goes back to waiting when the console takes the match back', async () => {
+    const { wrapper, socket, client } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await confirmIntro(wrapper)
+    expect(starterButtons(wrapper)).toHaveLength(2)
+
+    socket.fire('match:withdrawn', { matchId: MATCH.id })
+    await flushPromises()
+
+    expect(client.assignment.value).toBeNull()
+    expect(wrapper.text()).toContain('Board verbunden')
+  })
+
+  it('introduces a withdrawn match again when it comes back', async () => {
+    const { wrapper, socket } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await confirmIntro(wrapper)
+    socket.fire('match:withdrawn', { matchId: MATCH.id })
+    await flushPromises()
+
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    await waitOutGuard(wrapper)
+
+    expect(gameOnButton(wrapper)).toBeDefined()
+  })
+
+  it('keeps its match when another one is withdrawn', async () => {
+    const { socket, client } = await mountBoard()
+    socket.fire('match:assigned', { match: MATCH, participants: PARTICIPANTS })
+    socket.fire('match:withdrawn', { matchId: 'match-2' })
+    await flushPromises()
+
+    expect(client.assignment.value?.match.id).toBe(MATCH.id)
   })
 })

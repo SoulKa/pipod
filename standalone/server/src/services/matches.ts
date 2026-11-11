@@ -2,11 +2,12 @@
 // through a knockout bracket. DB-facing; the pure math lives in ../engine.
 import { nanoid } from 'nanoid'
 import { eq } from 'drizzle-orm'
-import type { Match } from '@pipod/shared'
+import { hasPlayStarted, type Match } from '@pipod/shared'
 import { db } from '../db/client'
 import { legs, matches } from '../db/schema'
 import { log } from '../logger'
 import { repo } from '../repo'
+import { clearFloorSession, getFloorSession } from './floorSessions'
 import { syncTournamentStatus } from './tournamentStatus'
 
 /** Legs required to win a best-of-N match. */
@@ -53,9 +54,21 @@ function renumberFloorQueue(floorId: string): void {
 }
 
 /**
+ * Whether a live match has seen play: a reported leg, or a dart in its floor's board
+ * session. A match is dispatched (and so live) well before that — its board still shows
+ * the intro and the starter choice.
+ */
+export function hasMatchStarted(match: Match): boolean {
+  if (match.legsA + match.legsB > 0) return true
+  const session = match.floorId ? getFloorSession(match.floorId) : undefined
+  return !!session?.snapshot && session.matchId === match.id && hasPlayStarted(session.snapshot)
+}
+
+/**
  * Attach a ready match to a floor at an optional queue position, or send it back to
  * the unassigned backlog when `floorId` is null. Dispatch changes it to live when the
- * floor's board is free. Only `ready` matches move; live/completed are locked.
+ * floor's board is free. A live match moves too until its first dart: it goes back to
+ * ready and its floor session is cleared — the caller tells that floor's board.
  */
 export function assignMatchFloor(
   matchId: string,
@@ -64,8 +77,17 @@ export function assignMatchFloor(
 ): Match {
   const match = repo.getMatch(matchId)
   if (!match) throw new Error('match not found')
-  if (match.status !== 'ready') throw new Error('only ready matches can be assigned')
+  const recalled = match.status === 'live' && !hasMatchStarted(match)
+  if (match.status !== 'ready' && !recalled) {
+    throw new Error('only matches that have not started can be moved')
+  }
   const previousFloorId = match.floorId
+  if (recalled) {
+    db.update(matches).set({ status: 'ready' }).where(eq(matches.id, matchId)).run()
+    const previousFloor = previousFloorId ? repo.getFloor(previousFloorId) : undefined
+    if (previousFloor) clearFloorSession(previousFloor)
+    log.info({ match: matchId, players: pairing(match) }, 'match taken back from its board')
+  }
 
   if (floorId === null) {
     db.update(matches).set({ floorId: null, queueOrder: 0 }).where(eq(matches.id, matchId)).run()

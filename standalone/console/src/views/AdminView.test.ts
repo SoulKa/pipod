@@ -67,6 +67,7 @@ function setDetail(
     stages: [],
     matches: [],
     groups: [],
+    occupiedFloorIds: [],
     ...over,
   }
 }

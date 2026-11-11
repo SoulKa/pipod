@@ -6,8 +6,11 @@ import {
   type Match,
   type MatchSeats,
   type Seat,
+  type TournamentOver,
 } from '@pipod/shared'
 import { vTapGuard } from '@pipod/ui'
+import { updateTournamentParams } from '../appMode'
+import ChampionScreen from './ChampionScreen.vue'
 import GameScreen from './GameScreen.vue'
 import MatchIntro from './MatchIntro.vue'
 import StarterScreen from './StarterScreen.vue'
@@ -108,11 +111,23 @@ function syncTournamentState() {
   )
 }
 
+// Back to the lobby: the match is over, or the console took it back before the first dart.
+function leaveMatch() {
+  tournamentMode.value = false
+  matchIds.value = null
+  firstLegStarter.value = null
+  introConfirmedFor.value = null
+  backToSetup()
+}
+
 // When the server assigns a match, enter tournament mode and start the first leg.
 watch(
   () => tour.assignment.value,
   (a) => {
-    if (!a) return
+    if (!a) {
+      leaveMatch()
+      return
+    }
     matchIds.value = [a.participants[0].id, a.participants[1].id]
     legsWon.value = [a.match.legsA, a.match.legsB]
     legIndex.value = a.match.legsA + a.match.legsB
@@ -138,13 +153,20 @@ function chooseStarter(seat: Seat) {
 }
 
 type BoardScreen =
-  { kind: 'lobby' } | { kind: 'intro' | 'starter' | 'game'; match: Match; seats: MatchSeats }
+  | { kind: 'lobby' }
+  | { kind: 'over'; over: TournamentOver }
+  | { kind: 'intro' | 'starter' | 'game'; match: Match; seats: MatchSeats }
 
 // Which screen the board shows. A match is introduced, then its starter picked, then played.
+// Once the tournament is over its winner takes the lobby's place — after the final match,
+// whose result still has to be reported.
 const screen = computed<BoardScreen>(() => {
   const match = tour.assignment.value?.match
   const seats = tour.seats.value
-  if (!tournamentMode.value || !match || !seats) return { kind: 'lobby' }
+  if (!tournamentMode.value || !match || !seats) {
+    const over = tour.over.value
+    return over ? { kind: 'over', over } : { kind: 'lobby' }
+  }
   if (firstLegStarter.value !== null) return { kind: 'game', match, seats }
   return { kind: introConfirmedFor.value === match.id ? 'starter' : 'intro', match, seats }
 })
@@ -153,10 +175,16 @@ const screen = computed<BoardScreen>(() => {
 // new match and each new leg.
 const screenKey = computed(() => {
   const current = screen.value
-  return current.kind === 'lobby'
-    ? 'lobby'
+  return current.kind === 'lobby' || current.kind === 'over'
+    ? current.kind
     : `${current.kind}:${current.match.id}:${legIndex.value}`
 })
+
+// Off to the tournament list; dropping the saved tournament keeps a reload from rejoining it.
+function leaveTournament() {
+  updateTournamentParams({ tournamentId: undefined, floorId: undefined })
+  tour.leaveTournament()
+}
 
 function confirmIntro() {
   if (screen.value.kind === 'intro') introConfirmedFor.value = screen.value.match.id
@@ -223,11 +251,8 @@ async function reportLegAndContinue() {
 
   const need = legsToWin(match.bestOf)
   if (tally[0] >= need || tally[1] >= need) {
-    tournamentMode.value = false
-    matchIds.value = null
-    firstLegStarter.value = null
+    leaveMatch()
     tour.clearAssignment()
-    backToSetup()
   } else {
     legIndex.value += 1
     startLeg()
@@ -249,6 +274,13 @@ async function reportLegAndContinue() {
         <p class="waiting-sub">Match und Feld in der Turnier-Konsole auswählen.</p>
       </section>
     </template>
+
+    <ChampionScreen
+      v-else-if="screen.kind === 'over'"
+      :champion="screen.over.champion"
+      :server-url="tour.serverUrl.value"
+      @done="leaveTournament"
+    />
 
     <MatchIntro
       v-else-if="screen.kind === 'intro'"

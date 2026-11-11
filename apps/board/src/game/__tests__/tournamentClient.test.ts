@@ -251,3 +251,149 @@ describe('reportLegResult', () => {
     expect(client.errorMsg.value).toBe('snapshot revision conflict')
   })
 })
+
+describe('picking a floor', () => {
+  async function pickingClient(occupied: string[] = []) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          tournament: { id: 't1', status: 'active' },
+          floors: [{ id: 'f1' }, { id: 'f2' }],
+          occupiedFloorIds: occupied,
+        }),
+      })),
+    )
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+    sockets[0]!.fire('connect')
+    await client.selectTournament('t1')
+    return { client, socket: sockets[0]! }
+  }
+
+  it('knows which floors another board holds', async () => {
+    const { client } = await pickingClient(['f1'])
+
+    expect(client.occupiedFloorIds.value).toEqual(['f1'])
+  })
+
+  it('joins the floor only once the server accepts it', async () => {
+    const { client, socket } = await pickingClient()
+    const picked = client.selectFloor('f1')
+    expect(client.floorId.value).toBe('')
+
+    socket.ack('board:register', null, { ok: true })
+
+    await expect(picked).resolves.toBe(true)
+    expect(client.floorId.value).toBe('f1')
+  })
+
+  it('stays off a floor the server refuses, and reloads who holds what', async () => {
+    const { client, socket } = await pickingClient()
+    const picked = client.selectFloor('f1')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          tournament: { id: 't1', status: 'active' },
+          floors: [{ id: 'f1' }, { id: 'f2' }],
+          occupiedFloorIds: ['f1'],
+        }),
+      })),
+    )
+
+    socket.ack('board:register', null, {
+      ok: false,
+      message: 'another board is already connected to this floor',
+    })
+
+    await expect(picked).resolves.toBe(false)
+    expect(client.floorId.value).toBe('')
+    expect(client.selectError.value).toBe('another board is already connected to this floor')
+    await vi.waitFor(() => expect(client.occupiedFloorIds.value).toEqual(['f1']))
+    // Nothing to replay on a reconnect: the board never got the floor.
+    socket.fire('connect')
+    expect(socket.events('board:register')).toHaveLength(1)
+  })
+
+  it('drops back to the picker when the floor is gone after a reconnect', async () => {
+    const { client, socket } = await pickingClient()
+    void client.selectFloor('f1')
+    socket.ack('board:register', null, { ok: true })
+
+    socket.fire('connect')
+    socket.ack('board:register', null, {
+      ok: false,
+      message: 'another board is already connected to this floor',
+    })
+
+    expect(client.floorId.value).toBe('')
+  })
+
+  it('takes the floor when a server too old to answer stays silent', async () => {
+    const { client, socket } = await pickingClient()
+    const picked = client.selectFloor('f1')
+
+    socket.ack('board:register', new Error('operation has timed out'))
+
+    await expect(picked).resolves.toBe(true)
+    expect(client.floorId.value).toBe('f1')
+  })
+
+  it('ignores the answer to a pick that a newer one replaced', async () => {
+    const { client, socket } = await pickingClient()
+    const first = client.selectFloor('f1')
+    const firstAck = socket.events('board:register')[0]!.args.at(-1) as (
+      err: Error | null,
+      res?: unknown,
+    ) => void
+    const second = client.selectFloor('f2')
+
+    firstAck(null, { ok: false, message: 'another board is already connected to this floor' })
+    socket.ack('board:register', null, { ok: true })
+
+    await expect(first).resolves.toBe(false)
+    await expect(second).resolves.toBe(true)
+    expect(client.floorId.value).toBe('f2')
+    expect(client.selectError.value).toBe('')
+  })
+})
+
+describe('end of the tournament', () => {
+  async function joinedClient() {
+    const client = await freshClient()
+    client.connect('192.168.0.5')
+    sockets[0]!.fire('connect')
+    client.tournamentId.value = 't1'
+    void client.selectFloor('f1')
+    sockets[0]!.ack('board:register', null, { ok: true })
+    return { client, socket: sockets[0]! }
+  }
+
+  const bob = { id: 'p2', name: 'Bob', avatar: null }
+
+  it('remembers the champion of the joined tournament', async () => {
+    const { client, socket } = await joinedClient()
+    socket.fire('tournament:over', { tournamentId: 'other', champion: bob })
+    expect(client.over.value).toBeNull()
+
+    socket.fire('tournament:over', { tournamentId: 't1', champion: bob })
+
+    expect(client.over.value).toEqual({ tournamentId: 't1', champion: bob })
+  })
+
+  it('leaves the tournament and stops re-registering on it', async () => {
+    const { client, socket } = await joinedClient()
+    socket.fire('tournament:over', { tournamentId: 't1', champion: bob })
+
+    client.leaveTournament()
+    socket.fire('connect')
+
+    expect(client.over.value).toBeNull()
+    expect(client.tournamentId.value).toBe('')
+    expect(client.floorId.value).toBe('')
+    expect(socket.events('board:register')).toHaveLength(1)
+  })
+})

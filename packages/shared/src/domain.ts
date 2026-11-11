@@ -194,4 +194,6 @@ export interface LiveMatchState {
   scores: LiveScore[]
   legsA: number
   legsB: number
+  /** False until the first dart; until then the console may still move the match. */
+  started: boolean
 }

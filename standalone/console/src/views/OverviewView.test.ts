@@ -72,6 +72,7 @@ function setDetail(status: TournamentStatus, stages: Stage[], matches: Match[]):
     stages,
     matches,
     groups: [],
+    occupiedFloorIds: [],
   }
 }
 

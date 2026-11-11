@@ -14,7 +14,9 @@ const host = ref('')
 const step = ref<Step>(canDiscover() ? 'discover' : 'host')
 // The screens behind the current one, so Back returns exactly where the user came from.
 const history = ref<Step[]>([])
-const { connected, floorId, tournaments, floors, errorMsg, selectError } = client
+const { connected, floorId, tournaments, floors, occupiedFloorIds, errorMsg, selectError } = client
+// The floor whose registration is waiting for the server's answer.
+const joining = ref('')
 const hostLabel = computed(() => host.value || 'Host-IP')
 
 function go(next: Step) {
@@ -63,9 +65,12 @@ async function chooseTournament(id: string): Promise<boolean> {
   go('floor')
   return true
 }
-function chooseFloor(id: string) {
-  client.selectFloor(id)
-  updateTournamentParams({ floorId: id })
+async function chooseFloor(id: string) {
+  joining.value = id
+  const ok = await client.selectFloor(id)
+  if (joining.value === id) joining.value = ''
+  // A refused floor must not be retried by the next reload.
+  updateTournamentParams({ floorId: ok ? id : undefined })
 }
 
 // Prefill the wizard from the launch URL, skipping each step that's already
@@ -140,12 +145,19 @@ onMounted(async () => {
           v-for="floor in floors"
           :key="floor.id"
           class="choice"
+          :disabled="!!joining || occupiedFloorIds.includes(floor.id)"
           @click="chooseFloor(floor.id)"
         >
           {{ floor.name }}
+          <small v-if="joining === floor.id">Wird verbunden…</small>
+          <small v-else-if="occupiedFloorIds.includes(floor.id)"
+            >Belegt – anderes Board verbunden</small
+          >
         </button>
       </template>
-      <p v-if="selectError && step === 'tournament'" class="error">{{ selectError }}</p>
+      <p v-if="selectError && (step === 'tournament' || step === 'floor')" class="error">
+        {{ selectError }}
+      </p>
       <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
     </section>
   </div>
@@ -217,6 +229,10 @@ onMounted(async () => {
   min-height: 76px;
   text-align: left;
   padding: 20px;
+}
+.choice:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .choice small {
   display: block;

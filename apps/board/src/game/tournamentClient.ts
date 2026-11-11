@@ -14,12 +14,15 @@ import {
   type ServerToClientEvents,
   type Tournament,
   type TournamentDetail,
+  type TournamentOver,
 } from '@pipod/shared'
 
 type BoardSocket = Socket<ServerToClientEvents, ClientToServerEvents>
 
 /** How long a board waits for the server to confirm a reported leg. */
 const REPORT_TIMEOUT_MS = 5000
+/** How long a board waits for the server to accept its floor. */
+const REGISTER_TIMEOUT_MS = 5000
 
 export type LegReport = { ok: true } | { ok: false; message: string }
 
@@ -30,6 +33,9 @@ const boardId = ref<string>(crypto.randomUUID())
 const tournaments = ref<Tournament[]>([])
 const tournamentId = ref('')
 const floors = ref<Floor[]>([])
+// Floors another board already holds, as of the last floor list.
+const occupiedFloorIds = ref<string[]>([])
+// Only set once the server accepted the board on it; until then the picker stays up.
 const floorId = ref('')
 // What the server dispatched, never changed afterwards: a new value here means a new
 // match, which the board restarts on.
@@ -44,6 +50,10 @@ const selectError = ref('')
 // Last floor registration, replayed on every (re)connect: the server keys a board's
 // authorization off the socket, so a dropped transport silently unregisters the board.
 const registration = ref<{ tournamentId: string; floorId: string } | null>(null)
+// Settles the floor pick in flight once the server answers its registration.
+let settlePick: ((ok: boolean) => void) | null = null
+// Set when the joined tournament is completed, which puts its winner on screen.
+const over = ref<TournamentOver | null>(null)
 
 function normalizeServerUrl(host: string): string {
   const value = host.trim().replace(/\/+$/, '')
@@ -61,13 +71,15 @@ async function loadTournaments(): Promise<void> {
   tournaments.value = list.filter((t) => isOpenTournament(t.status))
 }
 
-async function fetchFloors(id: string): Promise<Floor[]> {
+async function loadFloors(id: string): Promise<void> {
   const response = await fetch(`${serverUrl.value}/api/tournaments/${id}`)
   if (!response.ok) throw new Error('could not load tournament floors')
   const detail = (await response.json()) as TournamentDetail
   // The list hides closed tournaments; this catches a saved launch link to one.
   if (!isOpenTournament(detail.tournament.status)) throw new Error('this tournament is over')
-  return detail.floors
+  floors.value = detail.floors
+  // Servers before floor occupancy leave it out.
+  occupiedFloorIds.value = detail.occupiedFloorIds ?? []
 }
 
 /** Resolves false (with `selectError` set) when the tournament can't be joined. */
@@ -75,9 +87,10 @@ async function selectTournament(id: string): Promise<boolean> {
   tournamentId.value = id
   floorId.value = ''
   floors.value = []
+  occupiedFloorIds.value = []
   selectError.value = ''
   try {
-    floors.value = await fetchFloors(id)
+    await loadFloors(id)
     return true
   } catch (err) {
     tournamentId.value = ''
@@ -95,14 +108,51 @@ function register(): void {
   // Buffered emits are flushed before the 'connect' listener runs, so a queued
   // registration would arrive out of order — always register on a live socket.
   if (!socket.value?.connected || !current) return
-  socket.value.emit('board:register', { boardId: boardId.value, ...current })
+  socket.value
+    .timeout(REGISTER_TIMEOUT_MS)
+    .emit('board:register', { boardId: boardId.value, ...current }, (err, response) => {
+      // A newer pick, or leaving the tournament, replaced this registration.
+      if (registration.value !== current) return
+      // Servers before the acknowledgement never answer; they refused a board only with
+      // an error message.
+      const ok = !!err || response.ok
+      if (ok) {
+        floorId.value = current.floorId
+      } else {
+        // Also on a re-registration after a reconnect: someone took the floor meanwhile.
+        registration.value = null
+        floorId.value = ''
+        selectError.value = response.message
+        void loadFloors(current.tournamentId).catch(() => {})
+      }
+      settlePick?.(ok)
+      settlePick = null
+    })
 }
 
-function selectFloor(id: string): void {
-  floorId.value = id
-  if (!tournamentId.value || !id) return
+/** Resolves once the server answered: false (with `selectError` set) when refused. */
+function selectFloor(id: string): Promise<boolean> {
+  if (!tournamentId.value || !id) return Promise.resolve(false)
+  settlePick?.(false)
+  selectError.value = ''
   registration.value = { tournamentId: tournamentId.value, floorId: id }
+  const picked = new Promise<boolean>((resolve) => (settlePick = resolve))
   register()
+  return picked
+}
+
+/** Drop the tournament (e.g. once it is over) and refresh the list of open ones. */
+function leaveTournament(): void {
+  settlePick?.(false)
+  settlePick = null
+  registration.value = null
+  tournamentId.value = ''
+  floorId.value = ''
+  floors.value = []
+  occupiedFloorIds.value = []
+  over.value = null
+  clearAssignment()
+  void loadTournaments().catch(() => {})
 }
 
 function connect(host: string): void {
@@ -139,6 +189,12 @@ function connect(host: string): void {
   next.on('match:assigned', (value) => {
     assignment.value = value
     seats.value = value.participants
+  })
+  next.on('match:withdrawn', ({ matchId }) => {
+    if (assignment.value?.match.id === matchId) clearAssignment()
+  })
+  next.on('tournament:over', (value) => {
+    if (value.tournamentId === tournamentId.value) over.value = value
   })
   next.on('participant:updated', ({ id, name, avatar }) => {
     if (!seats.value) return
@@ -207,7 +263,9 @@ export function useTournamentClient() {
     tournaments,
     tournamentId,
     floors,
+    occupiedFloorIds,
     floorId,
+    over,
     assignment,
     seats,
     session,
@@ -217,6 +275,7 @@ export function useTournamentClient() {
     setBoardId,
     selectTournament,
     selectFloor,
+    leaveTournament,
     saveSnapshot,
     reportThrow,
     reportLegResult,

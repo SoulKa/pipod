@@ -20,6 +20,7 @@ import {
   deleteTournament,
   reactivateTournament,
   startTournament,
+  tournamentChampion,
 } from './tournaments'
 
 describe('createTournament / addParticipant', () => {
@@ -300,5 +301,28 @@ describe('deleteParticipant', () => {
       participantAId: players[0]!.id,
       participantBId: players[1]!.id,
     })
+  })
+})
+
+describe('tournamentChampion', () => {
+  beforeEach(resetDb)
+
+  it('is the winner of the knockout final, once it is played', () => {
+    const { tournament, players } = withPlayers(2)
+    const [final] = startTournament(tournament.id, knockoutOnly({ bestOf: 1 }))
+    expect(tournamentChampion(tournament.id)).toBeNull()
+
+    reportLeg(final!.id, 0, final!.participantBId!)
+
+    expect(tournamentChampion(tournament.id)?.id).toBe(final!.participantBId)
+    expect(players.map((p) => p.id)).toContain(final!.participantBId)
+  })
+
+  it('is nobody for a group-only tournament', () => {
+    const { tournament } = withPlayers(2)
+    const [only] = startTournament(tournament.id, groupOnly())
+    reportLeg(only!.id, 0, only!.participantAId!)
+
+    expect(tournamentChampion(tournament.id)).toBeNull()
   })
 })

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Split-view schedule board: an unassigned backlog plus one column per floor, each a
 // vertical list of its matches tagged by state. Scheduled (ready) matches drag between
-// floors and reorder within a floor; the live match is pinned and locked. An auto-assign
+// floors and reorder within a floor. A live match drags too until its first dart (it sits
+// on its board's intro or starter screen); after that it is pinned and locked. An auto-assign
 // button and an auto-fill toggle drive the server-side scheduler.
 import { ref, watch } from 'vue'
 import type { SortableEvent } from 'sortablejs'
@@ -26,15 +27,31 @@ function orderMatches(list: Match[]): Match[] {
   )
 }
 
+/**
+ * A dispatched match nobody has thrown at yet. Unknown live state counts as started: the
+ * server refuses to move a started match anyway, and a card that won't drop is worse.
+ */
+function isWaitingToStart(match: Match): boolean {
+  return (
+    match.status === 'live' &&
+    match.legsA + match.legsB === 0 &&
+    props.live.get(match.id)?.started === false
+  )
+}
+
 function syncFromProps(): void {
   const matches = props.detail.matches
   backlog.value = orderMatches(matches.filter((m) => m.status === 'ready' && m.floorId === null))
   columns.value = props.detail.floors.map((floor) => ({
     floor,
-    queue: orderMatches(matches.filter((m) => m.floorId === floor.id && m.status === 'ready')),
+    // The waiting live match leads its floor's list, ahead of the queue it plays before.
+    queue: [
+      ...matches.filter((m) => m.floorId === floor.id && isWaitingToStart(m)),
+      ...orderMatches(matches.filter((m) => m.floorId === floor.id && m.status === 'ready')),
+    ],
   }))
 }
-watch(() => props.detail, syncFromProps, { deep: true, immediate: true })
+watch(() => [props.detail, props.live], syncFromProps, { deep: true, immediate: true })
 
 const nameOf = (id: string | null): string => {
   if (!id) return '—'
@@ -46,6 +63,14 @@ const stageName = (stageId: string): string => {
 }
 const liveOnFloor = (floorId: string): Match | undefined =>
   props.detail.matches.find((m) => m.floorId === floorId && m.status === 'live')
+/** The live match that is being played, and so pinned above the floor's list. */
+const pinnedOnFloor = (floorId: string): Match | undefined => {
+  const match = liveOnFloor(floorId)
+  return match && !isWaitingToStart(match) ? match : undefined
+}
+/** List indices count a leading waiting match, which the server's queue positions don't. */
+const queueOffset = (floorId: string): number =>
+  columns.value.find((c) => c.floor.id === floorId)?.queue.filter(isWaitingToStart).length ?? 0
 const pendingCount = (): number => props.detail.matches.filter((m) => m.status === 'pending').length
 
 async function apply(fn: () => Promise<unknown>): Promise<void> {
@@ -72,6 +97,14 @@ function onDragEnd(evt: SortableEvent): void {
     if (!sameList) void apply(() => api.assignMatchFloor(matchId, null))
     return // reordering the backlog carries no meaning
   }
+  const dragged = props.detail.matches.find((m) => m.id === matchId)
+  if (sameList && dragged?.status === 'live') {
+    // Moving the waiting match down its own floor lets the matches above it play first.
+    if (evt.newIndex !== evt.oldIndex) {
+      void apply(() => api.assignMatchFloor(matchId, to, evt.newIndex))
+    }
+    return
+  }
   if (sameList) {
     const queue = columns.value.find((c) => c.floor.id === to)?.queue ?? []
     void apply(() =>
@@ -81,7 +114,8 @@ function onDragEnd(evt: SortableEvent): void {
       ),
     )
   } else {
-    void apply(() => api.assignMatchFloor(matchId, to, evt.newIndex))
+    const position = Math.max(0, (evt.newIndex ?? 0) - queueOffset(to))
+    void apply(() => api.assignMatchFloor(matchId, to, position))
   }
 }
 
@@ -176,23 +210,23 @@ async function toggleAutoFill(event: Event): Promise<void> {
           </span>
         </div>
 
-        <article v-if="liveOnFloor(column.floor.id)" class="match-card card-live">
+        <article v-if="pinnedOnFloor(column.floor.id)" class="match-card card-live">
           <div class="match-meta">
-            <span>{{ stageName(liveOnFloor(column.floor.id)!.stageId) }}</span>
+            <span>{{ stageName(pinnedOnFloor(column.floor.id)!.stageId) }}</span>
             <span class="tag tag-live">Läuft</span>
           </div>
           <div class="matchup">
-            <strong>{{ nameOf(liveOnFloor(column.floor.id)!.participantAId) }}</strong>
+            <strong>{{ nameOf(pinnedOnFloor(column.floor.id)!.participantAId) }}</strong>
             <span class="score">
               {{
-                live.get(liveOnFloor(column.floor.id)!.id)?.legsA ??
-                liveOnFloor(column.floor.id)!.legsA
+                live.get(pinnedOnFloor(column.floor.id)!.id)?.legsA ??
+                pinnedOnFloor(column.floor.id)!.legsA
               }}–{{
-                live.get(liveOnFloor(column.floor.id)!.id)?.legsB ??
-                liveOnFloor(column.floor.id)!.legsB
+                live.get(pinnedOnFloor(column.floor.id)!.id)?.legsB ??
+                pinnedOnFloor(column.floor.id)!.legsB
               }}
             </span>
-            <strong>{{ nameOf(liveOnFloor(column.floor.id)!.participantBId) }}</strong>
+            <strong>{{ nameOf(pinnedOnFloor(column.floor.id)!.participantBId) }}</strong>
           </div>
         </article>
 
@@ -207,7 +241,7 @@ async function toggleAutoFill(event: Event): Promise<void> {
             v-for="match in column.queue"
             :key="match.id"
             :data-id="match.id"
-            class="match-card"
+            :class="match.status === 'live' ? 'match-card card-waiting' : 'match-card'"
           >
             <div class="match-meta">
               <span>{{ stageName(match.stageId) }}</span>
@@ -218,7 +252,10 @@ async function toggleAutoFill(event: Event): Promise<void> {
               <span>vs</span>
               <strong>{{ nameOf(match.participantBId) }}</strong>
             </div>
-            <span class="tag tag-scheduled">Geplant</span>
+            <span v-if="match.status === 'live'" class="tag tag-live"
+              >Am Board · noch nicht begonnen</span
+            >
+            <span v-else class="tag tag-scheduled">Geplant</span>
           </article>
         </VueDraggable>
         <p v-if="!column.queue.length && !liveOnFloor(column.floor.id)" class="col-empty pd-muted">
@@ -325,6 +362,9 @@ async function toggleAutoFill(event: Event): Promise<void> {
 }
 .card-live {
   cursor: default;
+  border-color: var(--pd-border-accent, rgba(34, 211, 238, 0.65));
+}
+.card-waiting {
   border-color: var(--pd-border-accent, rgba(34, 211, 238, 0.65));
 }
 .card-ghost {

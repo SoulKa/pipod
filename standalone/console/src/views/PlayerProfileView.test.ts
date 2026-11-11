@@ -39,6 +39,7 @@ function setPlayer(avatar: Participant['avatar']): void {
     stages: [],
     matches: [],
     groups: [],
+    occupiedFloorIds: [],
   }
 }
 

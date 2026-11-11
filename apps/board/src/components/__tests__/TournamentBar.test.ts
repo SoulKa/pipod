@@ -29,13 +29,16 @@ const connect = vi.fn()
 const selectTournament = vi.fn()
 const selectFloor = vi.fn()
 const selectError = ref('')
+const floors = ref<{ id: string; tournamentId: string; name: string }[]>([])
+const occupiedFloorIds = ref<string[]>([])
 let isConnected = false
 vi.mock('../../game/tournamentClient', () => ({
   useTournamentClient: () => ({
     connected: ref(isConnected),
     floorId: ref(''),
     tournaments: ref([]),
-    floors: ref([]),
+    floors,
+    occupiedFloorIds,
     errorMsg: ref(''),
     selectError,
     boardId: ref('board-1'),
@@ -60,8 +63,10 @@ beforeEach(() => {
   searches.mockClear()
   connect.mockClear()
   selectTournament.mockReset()
-  selectFloor.mockClear()
+  selectFloor.mockReset()
   selectError.value = ''
+  floors.value = []
+  occupiedFloorIds.value = []
   isConnected = false
   window.history.replaceState(null, '', '/')
 })
@@ -88,6 +93,57 @@ describe('TournamentBar tournament list', () => {
     expect(wrapper.text()).toContain('this tournament is over')
     expect(selectFloor).not.toHaveBeenCalled()
     expect(new URLSearchParams(window.location.search).has('tournamentId')).toBe(false)
+  })
+})
+
+describe('TournamentBar floor picker', () => {
+  /** Open the picker of tournament t1 the way a saved launch link does. */
+  async function openPicker(link = '/?ip=192.168.0.9&tournamentId=t1') {
+    selectTournament.mockResolvedValue(true)
+    floors.value = [
+      { id: 'f1', tournamentId: 't1', name: 'Feld 1' },
+      { id: 'f2', tournamentId: 't1', name: 'Feld 2' },
+    ]
+    window.history.replaceState(null, '', link)
+    const wrapper = mount(TournamentBar)
+    await flushPromises()
+    return wrapper
+  }
+
+  it('marks a floor another board holds and keeps it from being picked', async () => {
+    occupiedFloorIds.value = ['f1']
+    const wrapper = await openPicker()
+
+    const taken = button(wrapper, 'Feld 1')
+    expect(taken.text()).toContain('Belegt')
+    expect(taken.attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'Feld 2').attributes('disabled')).toBeUndefined()
+  })
+
+  it('stays on the picker, and forgets the floor, when the server refuses it', async () => {
+    selectFloor.mockImplementation(async () => {
+      selectError.value = 'another board is already connected to this floor'
+      return false
+    })
+    const wrapper = await openPicker()
+
+    await button(wrapper, 'Feld 1').trigger('click')
+    await flushPromises()
+
+    expect(selectFloor).toHaveBeenCalledWith('f1')
+    expect(wrapper.text()).toContain('Feld für dieses Board auswählen')
+    expect(wrapper.text()).toContain('another board is already connected to this floor')
+    expect(new URLSearchParams(window.location.search).has('floorId')).toBe(false)
+  })
+
+  it('saves the floor once the server accepts it', async () => {
+    selectFloor.mockResolvedValue(true)
+    const wrapper = await openPicker()
+
+    await button(wrapper, 'Feld 2').trigger('click')
+    await flushPromises()
+
+    expect(new URLSearchParams(window.location.search).get('floorId')).toBe('f2')
   })
 })
 

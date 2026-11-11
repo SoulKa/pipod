@@ -49,6 +49,18 @@ export interface MatchAssignment {
   participants: MatchSeats
 }
 
+/** The server's answer to a board picking a floor; refused boards stay on the picker. */
+export type BoardRegisterResponse = { ok: true } | { ok: false; message: string }
+
+/**
+ * Sent to a tournament's boards once it is completed. `champion` is the knockout final's
+ * winner — null for a group-only tournament, which has no single winner match.
+ */
+export interface TournamentOver {
+  tournamentId: string
+  champion: SeatPlayer | null
+}
+
 /** The persisted state returned after registering a floor board or saving a snapshot. */
 export interface BoardSession {
   snapshot: BoardGameSnapshot | null
@@ -97,6 +109,9 @@ export interface ServerToClientEvents {
   'tournaments:list': (tournaments: Tournament[]) => void
   'tournament:state': (payload: TournamentSnapshot) => void
   'match:assigned': (payload: MatchAssignment) => void
+  /** The console took a dispatched match back from the board before its first dart. */
+  'match:withdrawn': (payload: { matchId: string }) => void
+  'tournament:over': (payload: TournamentOver) => void
   'match:live': (state: LiveMatchState) => void
   'match:updated': (match: Match) => void
   /** A participant changed (e.g. their picture), so a board can refresh its match intro. */
@@ -110,7 +125,10 @@ export interface ServerToClientEvents {
 
 export interface ClientToServerEvents {
   /** Bind a board's stable ID to a tournament floor. */
-  'board:register': (payload: { boardId: string; tournamentId: string; floorId: string }) => void
+  'board:register': (
+    payload: { boardId: string; tournamentId: string; floorId: string },
+    reply: (response: BoardRegisterResponse) => void,
+  ) => void
   /** Receive `tournaments:list` (the viewer following whichever tournament is active). */
   'tournaments:subscribe': () => void
   /** Subscribe to a tournament's room to receive state + live updates. */

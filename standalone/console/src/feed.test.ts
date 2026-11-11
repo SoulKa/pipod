@@ -68,6 +68,7 @@ function detail(matches: Match[]): TournamentDetail {
     stages: [],
     matches,
     groups: [],
+    occupiedFloorIds: [],
   }
 }
 

@@ -118,6 +118,7 @@ describe('BracketTree rendering', () => {
           scores: [],
           legsA: 2,
           legsB: 1,
+          started: true,
         },
       ],
     ])
@@ -135,7 +136,15 @@ describe('BracketTree rendering', () => {
     const live = new Map<string, LiveMatchState>([
       [
         's0',
-        { matchId: 's0', legIndex: 2, currentParticipantId: 'pA', scores: [], legsA: 1, legsB: 1 },
+        {
+          matchId: 's0',
+          legIndex: 2,
+          currentParticipantId: 'pA',
+          scores: [],
+          legsA: 1,
+          legsB: 1,
+          started: true,
+        },
       ],
     ])
     const tree = mountTree(matches, live)

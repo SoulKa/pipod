@@ -4,7 +4,16 @@ import { resetDb } from '../test/db'
 import { knockoutOnly } from '../test/phases'
 import { repo } from '../repo'
 import { addParticipant, createFloor, createTournament, startTournament } from './tournaments'
-import { assignMatchFloor, claimMatch, dispatchMatch, legsToWin, reportLeg } from './matches'
+import { createMatchSnapshot } from '../realtime/live'
+import { getFloorSession, initializeFloorSession, saveFloorSnapshot } from './floorSessions'
+import {
+  assignMatchFloor,
+  claimMatch,
+  dispatchMatch,
+  hasMatchStarted,
+  legsToWin,
+  reportLeg,
+} from './matches'
 
 describe('legsToWin', () => {
   it.each([
@@ -172,5 +181,65 @@ describe('match lifecycle guards', () => {
 
     expect(() => dispatchMatch(match.id, 'wrong-floor')).toThrow(/not ready for this floor/)
     expect(dispatchMatch(match.id, floor.id).status).toBe('live')
+  })
+})
+
+describe('moving a dispatched match', () => {
+  beforeEach(resetDb)
+
+  /** A best-of-3 semifinal dispatched to Floor 1, its board seeded like a real dispatch. */
+  function dispatched() {
+    const { tournament, matches } = seedKnockout(4, 3)
+    const first = createFloor(tournament.id, 'Floor 1')
+    const second = createFloor(tournament.id, 'Floor 2')
+    const match = round0(matches)[0]!
+    assignMatchFloor(match.id, first.id)
+    const live = dispatchMatch(match.id, first.id)
+    const players = repo.listParticipants(tournament.id)
+    const session = initializeFloorSession(first, live, createMatchSnapshot(live, players))
+    return { first, second, match: live, session }
+  }
+
+  it('takes back a match nobody has thrown at yet', () => {
+    const { first, second, match } = dispatched()
+    expect(hasMatchStarted(match)).toBe(false)
+
+    const moved = assignMatchFloor(match.id, second.id)
+
+    expect(moved).toMatchObject({ status: 'ready', floorId: second.id })
+    expect(getFloorSession(first.id)).toMatchObject({ matchId: null, snapshot: null })
+  })
+
+  it('returns a match nobody has thrown at yet to the backlog', () => {
+    const { match } = dispatched()
+
+    expect(assignMatchFloor(match.id, null)).toMatchObject({ status: 'ready', floorId: null })
+  })
+
+  it('keeps a match on its floor after the first dart', () => {
+    const { first, second, match, session } = dispatched()
+    const snapshot = session.snapshot!
+    const dart = { base: 20, multiplier: 1 as const, points: 20 }
+    saveFloorSnapshot(
+      first,
+      {
+        ...snapshot,
+        players: snapshot.players.map((p, i) => (i === 0 ? { ...p, score: p.score - 20 } : p)),
+        currentThrows: [dart],
+      },
+      match.id,
+      session.revision,
+    )
+
+    expect(hasMatchStarted(match)).toBe(true)
+    expect(() => assignMatchFloor(match.id, second.id)).toThrow(/have not started/)
+    expect(repo.getMatch(match.id)).toMatchObject({ status: 'live', floorId: first.id })
+  })
+
+  it('keeps a match on its floor once a leg is reported', () => {
+    const { second, match } = dispatched()
+    reportLeg(match.id, 0, match.participantAId!)
+
+    expect(() => assignMatchFloor(match.id, second.id)).toThrow(/have not started/)
   })
 })

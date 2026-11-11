@@ -309,7 +309,24 @@ describe('match-end race conditions over websockets', () => {
       const intruder = await BoardClient.connect(server.url, 'board-2')
       clients.push(intruder)
 
-      intruder.sendRegister(tournament.id, floor.id)
+      expect(await intruder.sendRegister(tournament.id, floor.id)).toEqual({
+        ok: false,
+        message: 'another board is already connected to this floor',
+      })
+      const detail = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
+      expect(detail.occupiedFloorIds).toEqual([floor.id])
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'still refuses a board that registers without an acknowledgement',
+    async () => {
+      const { tournament, floor } = await liveMatch()
+      const intruder = await BoardClient.connect(server.url, 'board-2')
+      clients.push(intruder)
+
+      intruder.sendLegacyRegister(tournament.id, floor.id)
       const message = await intruder.events.wait('error:message')
       expect(message).toBe('another board is already connected to this floor')
     },
@@ -327,9 +344,32 @@ describe('match-end race conditions over websockets', () => {
 
       const late = await BoardClient.connect(server.url, 'board-2')
       clients.push(late)
-      late.sendRegister(tournament.id, floor.id)
-      const message = await late.events.wait('error:message')
-      expect(message).toBe('this tournament is over')
+      const refusal = late.sendRegister(tournament.id, floor.id)
+      expect(await late.events.wait('tournament:over')).toEqual({
+        tournamentId: tournament.id,
+        champion: { id: roster[0]!.id, name: 'Ann', avatar: null },
+      })
+      expect(await refusal).toEqual({ ok: false, message: 'this tournament is over' })
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'shows every board the champion before the final leg is acknowledged',
+    async () => {
+      const { tournament, roster, board, assignment } = await liveMatch()
+      const idle = await BoardClient.connect(server.url, 'board-2')
+      clients.push(idle)
+      const spare = await rest.post<Floor>(`/api/tournaments/${tournament.id}/floors`, {
+        name: 'Floor 2',
+      })
+      await idle.register(tournament.id, spare.id)
+
+      await board.playMatch(() => roster[1]!.id, assignment)
+
+      const over = { tournamentId: tournament.id, champion: { id: roster[1]!.id, name: 'Bob' } }
+      expect(board.events.all('tournament:over')).toMatchObject([over])
+      expect(await idle.events.wait('tournament:over')).toMatchObject(over)
     },
     TEST_TIMEOUT_MS,
   )
@@ -356,6 +396,82 @@ describe('match-end race conditions over websockets', () => {
       })
       const restored = await reconnected.nextAssignment()
       expect(restored?.match.id).toBe(assignment.match.id)
+    },
+    TEST_TIMEOUT_MS,
+  )
+})
+
+describe('moving a dispatched match over REST and websockets', () => {
+  /** A best-of-3 final dispatched to the board on Floor 1, with a second board idle. */
+  async function dispatchedMatch() {
+    const { tournament, roster, floors } = await createTournament(
+      'Move Cup',
+      ['Ann', 'Bob'],
+      ['Floor 1', 'Floor 2'],
+    )
+    const [first, second] = floors as [Floor, Floor]
+    const board = await openBoard('board-1', tournament.id, first.id)
+    await start(tournament.id, finalOnly)
+    const assignment = (await board.nextAssignment())!
+    expect(assignment.match.floorId).toBe(first.id)
+    const other = await openBoard('board-2', tournament.id, second.id)
+    return { tournament, roster, first, second, board, other, assignment }
+  }
+
+  it(
+    'hands a match nobody has thrown at yet to another floor',
+    async () => {
+      const { second, board, other, assignment } = await dispatchedMatch()
+      const matchId = assignment.match.id
+
+      await rest.post(`/api/matches/${matchId}/floor`, { floorId: second.id })
+
+      expect(await board.events.wait('match:withdrawn')).toEqual({ matchId })
+      const moved = await other.nextAssignment()
+      expect(moved?.match).toMatchObject({ id: matchId, floorId: second.id, status: 'live' })
+      expect(other.session.snapshot?.tournament?.activeMatchId).toBe(matchId)
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'sends a match nobody has thrown at yet back to the backlog',
+    async () => {
+      const { tournament, board, assignment } = await dispatchedMatch()
+      const matchId = assignment.match.id
+
+      await rest.post(`/api/matches/${matchId}/floor`, { floorId: null })
+
+      expect(await board.events.wait('match:withdrawn')).toEqual({ matchId })
+      await board.events.wait('board:session', { predicate: (s) => s.snapshot === null })
+      const detail = await rest.get<TournamentDetail>(`/api/tournaments/${tournament.id}`)
+      expect(detail.matches[0]).toMatchObject({ id: matchId, floorId: null, status: 'ready' })
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'keeps a match on its floor once play has started',
+    async () => {
+      const { second, roster, board, assignment } = await dispatchedMatch()
+      await board.playLeg(roster[0]!.id)
+
+      await expect(
+        rest.post(`/api/matches/${assignment.match.id}/floor`, { floorId: second.id }),
+      ).rejects.toThrow('only matches that have not started can be moved')
+      expect(board.events.all('match:withdrawn')).toEqual([])
+    },
+    TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'tells a console which dispatched match has not started yet',
+    async () => {
+      const { tournament, assignment } = await dispatchedMatch()
+      const spectator = await openSpectator(tournament.id)
+
+      const live = await spectator.events.wait('match:live')
+      expect(live).toMatchObject({ matchId: assignment.match.id, started: false })
     },
     TEST_TIMEOUT_MS,
   )

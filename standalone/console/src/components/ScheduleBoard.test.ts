@@ -75,6 +75,7 @@ function detail(over: Partial<TournamentDetail> = {}): TournamentDetail {
       }),
     ],
     groups: [],
+    occupiedFloorIds: [],
     ...over,
   }
 }
@@ -118,6 +119,7 @@ describe('ScheduleBoard rendering', () => {
           scores: [],
           legsA: 2,
           legsB: 1,
+          started: true,
         },
       ],
     ])
@@ -154,5 +156,66 @@ describe('ScheduleBoard scheduler actions', () => {
     expect(board.emitted('error')).toEqual([['scheduler offline']])
     // The finally-block still reconciles with the server.
     expect(board.emitted('refresh')).toHaveLength(1)
+  })
+})
+
+describe('ScheduleBoard dispatched matches', () => {
+  function liveState(started: boolean): Map<string, LiveMatchState> {
+    return new Map([
+      [
+        'live1',
+        {
+          matchId: 'live1',
+          legIndex: 0,
+          currentParticipantId: 'pA',
+          scores: [],
+          legsA: 0,
+          legsB: 0,
+          started,
+        },
+      ],
+    ])
+  }
+
+  function mountDraggable(live: Map<string, LiveMatchState>) {
+    return mount(ScheduleBoard, {
+      props: { detail: detail(), live },
+      global: {
+        stubs: {
+          VueDraggable: { name: 'VueDraggable', template: '<div class="dnd"><slot /></div>' },
+        },
+      },
+    })
+  }
+
+  /** Fire SortableJS's drop of `matchId` from one list into another. */
+  function drop(board: ReturnType<typeof mountDraggable>, matchId: string, to: string) {
+    const lists = board.findAllComponents({ name: 'VueDraggable' })
+    const target = lists.find((l) => l.attributes('data-floor') === to)!
+    const item = { dataset: { id: matchId } }
+    target.vm.$emit('end', { item, from: {}, to: { dataset: { floor: to } }, newIndex: 0 })
+  }
+
+  it('lists a match nobody has thrown at yet as movable', () => {
+    const board = mountDraggable(liveState(false))
+
+    expect(board.find('.card-live').exists()).toBe(false)
+    expect(board.find('.card-waiting').text()).toContain('noch nicht begonnen')
+  })
+
+  it('pins a match once play has started', () => {
+    const board = mountDraggable(liveState(true))
+
+    expect(board.find('.card-live').exists()).toBe(true)
+    expect(board.find('.card-waiting').exists()).toBe(false)
+  })
+
+  it('sends a waiting match back to the backlog', async () => {
+    const board = mountDraggable(liveState(false))
+
+    drop(board, 'live1', 'backlog')
+    await flushPromises()
+
+    expect(api.assignMatchFloor).toHaveBeenCalledWith('live1', null)
   })
 })
