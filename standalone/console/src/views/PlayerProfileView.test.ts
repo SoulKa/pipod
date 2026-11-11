@@ -20,8 +20,16 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../api', () => ({ api }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ back: vi.fn(), push: vi.fn() }) }))
-// happy-dom has no canvas to crop with; the crop itself is the browser's job.
-vi.mock('../photo', () => ({ toAvatarJpeg: async (file: Blob) => file }))
+// happy-dom has no canvas to decode or crop with; the crop math has its own tests.
+const photo = vi.hoisted(() => ({
+  bitmap: { width: 400, height: 300, close: vi.fn() },
+  toAvatarJpeg: vi.fn(async () => new Blob(['jpeg'])),
+}))
+vi.mock('../photo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../photo')>()),
+  loadPhoto: async () => photo.bitmap,
+  toAvatarJpeg: photo.toAvatarJpeg,
+}))
 
 import PlayerProfileView from './PlayerProfileView.vue'
 
@@ -44,18 +52,28 @@ function setPlayer(avatar: Participant['avatar']): void {
 }
 
 function mountView() {
-  return mount(PlayerProfileView, { props: { id: 't1', participantId: 'p1' } })
+  return mount(PlayerProfileView, {
+    props: { id: 't1', participantId: 'p1' },
+    global: { stubs: { teleport: true } },
+  })
 }
 
-const photo = (version: string) => ({ kind: 'photo', version }) as const
+const photoAvatar = (version: string) => ({ kind: 'photo', version }) as const
 
-/** Pick a file in the "Foto aufnehmen" input, with the upload left pending. */
-async function takePhoto(view: ReturnType<typeof mountView>) {
-  let finish!: (participant: Participant) => void
-  api.setAvatarPhoto.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+/** Pick a file in the "Foto aufnehmen" input; the cropper opens. */
+async function pickPhoto(view: ReturnType<typeof mountView>) {
   const input = view.find('input[capture]')
   Object.defineProperty(input.element, 'files', { value: [new Blob(['x'])], configurable: true })
   await input.trigger('change')
+  await flushPromises()
+}
+
+/** Pick a photo and confirm the crop, with the upload left pending. */
+async function takePhoto(view: ReturnType<typeof mountView>) {
+  let finish!: (participant: Participant) => void
+  api.setAvatarPhoto.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+  await pickPhoto(view)
+  await view.find('.cropper .confirm').trigger('click')
   await flushPromises()
   return finish
 }
@@ -88,22 +106,44 @@ describe('PlayerProfileView', () => {
     setPlayer({ kind: 'emoji', emoji: '🍺' })
     const view = mountView()
     const finish = await takePhoto(view)
-    finish(withAvatar(photo('new')))
+    finish(withAvatar(photoAvatar('new')))
     await flushPromises()
     expect(view.find('.preview').exists()).toBe(true)
 
-    setPlayer(photo('new'))
+    setPlayer(photoAvatar('new'))
     await flushPromises()
     expect(view.find('.preview').exists()).toBe(false)
   })
 
   it('drops the preview at once when the same photo was uploaded again', async () => {
-    setPlayer(photo('same'))
+    setPlayer(photoAvatar('same'))
     const view = mountView()
     const finish = await takePhoto(view)
-    finish(withAvatar(photo('same')))
+    finish(withAvatar(photoAvatar('same')))
     await flushPromises()
     expect(view.find('.preview').exists()).toBe(false)
+  })
+
+  it('uploads the centered crop once confirmed', async () => {
+    setPlayer(null)
+    const view = mountView()
+    await takePhoto(view)
+    expect(photo.toAvatarJpeg).toHaveBeenCalledWith(photo.bitmap, { cx: 200, cy: 150, zoom: 1 })
+    expect(api.setAvatarPhoto).toHaveBeenCalledWith('p1', expect.any(Blob))
+    expect(view.find('.cropper').exists()).toBe(false)
+    expect(photo.bitmap.close).toHaveBeenCalled()
+  })
+
+  it('uploads nothing when cropping is cancelled', async () => {
+    setPlayer(null)
+    const view = mountView()
+    await pickPhoto(view)
+    expect(view.find('.cropper').exists()).toBe(true)
+    await view.find('.cropper .cancel').trigger('click')
+    await flushPromises()
+    expect(view.find('.cropper').exists()).toBe(false)
+    expect(api.setAvatarPhoto).not.toHaveBeenCalled()
+    expect(photo.bitmap.close).toHaveBeenCalled()
   })
 
   it('saves a quick-pick emoji', async () => {

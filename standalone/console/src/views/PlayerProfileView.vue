@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { AVATAR_QUICK_EMOJIS, avatarKey, isSingleEmoji } from '@pipod/shared'
 import { PlayerAvatar } from '@pipod/ui'
 import { api } from '../api'
 import { useTournamentFeed } from '../feed'
-import { toAvatarJpeg } from '../photo'
+import PhotoCropper from '../components/PhotoCropper.vue'
+import { loadPhoto, toAvatarJpeg, type PhotoCrop } from '../photo'
 
 const props = defineProps<{ id: string; participantId: string }>()
 
@@ -17,6 +18,7 @@ onMounted(() => feed.open(props.id))
 onUnmounted(() => {
   feed.close()
   clearPreview()
+  closeCropper()
 })
 
 const participant = computed(() =>
@@ -61,6 +63,14 @@ async function run(fn: () => Promise<unknown>): Promise<void> {
   }
 }
 
+// The picked photo while its crop is being chosen; nothing is uploaded until confirmed.
+const cropping = shallowRef<ImageBitmap | null>(null)
+
+function closeCropper(): void {
+  cropping.value?.close()
+  cropping.value = null
+}
+
 async function onPhoto(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -68,7 +78,21 @@ async function onPhoto(event: Event): Promise<void> {
   input.value = ''
   if (!file) return
   await run(async () => {
-    const jpeg = await toAvatarJpeg(file)
+    closeCropper()
+    cropping.value = await loadPhoto(file)
+  })
+}
+
+async function onCrop(crop: PhotoCrop): Promise<void> {
+  const photo = cropping.value
+  if (!photo) return
+  await run(async () => {
+    let jpeg: Blob
+    try {
+      jpeg = await toAvatarJpeg(photo, crop)
+    } finally {
+      closeCropper()
+    }
     clearPreview()
     pending.value = { url: URL.createObjectURL(jpeg), key: null }
     try {
@@ -174,6 +198,8 @@ function back(): void {
     </template>
     <p v-else-if="detail" class="pd-muted">Diesen Spieler gibt es in diesem Turnier nicht.</p>
     <p v-else class="pd-muted">Wird geladen…</p>
+
+    <PhotoCropper v-if="cropping" :photo="cropping" @confirm="onCrop" @cancel="closeCropper" />
   </div>
 </template>
 
