@@ -65,6 +65,14 @@
   }
 }
 
+/* The big-screen viewer is exactly one window tall; its panels scroll inside it instead. */
+.console-content:has(> .overview--wide) {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+}
+
 @media (max-width: 40rem) {
   .console-topbar {
     min-height: 4rem;

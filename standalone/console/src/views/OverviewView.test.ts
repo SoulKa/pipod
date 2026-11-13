@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 import { ref } from 'vue'
 import type {
@@ -25,7 +25,13 @@ vi.mock('../feed', () => ({
   }),
 }))
 
+// happy-dom's default window would count as a big screen; each test picks its layout.
+const wide = ref(false)
+vi.mock('../media', () => ({ useMediaQuery: () => wide }))
+
 import OverviewView from './OverviewView.vue'
+import ViewerQrButton from '../components/ViewerQrButton.vue'
+import ViewerQrTile from '../components/ViewerQrTile.vue'
 
 function match(over: Partial<Match> = {}): Match {
   return {
@@ -87,6 +93,10 @@ const decidedFinal = () =>
   })
 
 describe('OverviewView', () => {
+  beforeEach(() => {
+    wide.value = false
+  })
+
   it('renders knockout stages as a bracket tree and group stages as a list', () => {
     setDetail(
       'active',
@@ -165,5 +175,92 @@ describe('OverviewView', () => {
       { name: 'player', params: { id: 't1', participantId: 'pA' } },
       { name: 'player', params: { id: 't1', participantId: 'pB' } },
     ])
+  })
+
+  describe('on a big screen', () => {
+    const mountWide = () => {
+      wide.value = true
+      return mount(OverviewView, {
+        props: { id: 't1' },
+        global: { stubs: { ViewerQrTile: true, RouterLink: RouterLinkStub } },
+      })
+    }
+
+    it('shows the QR code in the corner instead of behind a button', () => {
+      setDetail('active', [stage()], [])
+      const view = mountWide()
+
+      expect(view.findComponent(ViewerQrTile).exists()).toBe(true)
+      expect(view.findComponent(ViewerQrButton).exists()).toBe(false)
+    })
+
+    it('puts each phase and the players behind tabs, opening on the current phase', () => {
+      setDetail(
+        'active',
+        [stage('group'), stage()],
+        [match({ id: 'g1', stageId: 'g', status: 'completed' }), match({ id: 'k1' })],
+      )
+      const view = mountWide()
+
+      expect(view.findAll('[role="tab"]').map((t) => t.text())).toEqual([
+        'Gruppenphase',
+        'K.-o.-Phase',
+        'Spieler',
+      ])
+      expect(view.find('[aria-selected="true"]').text()).toBe('K.-o.-Phase')
+      expect(view.findAll('.stage-card h3').map((h) => h.text())).toEqual(['K.-o.-Phase'])
+      expect(view.find('.players-panel').exists()).toBe(false)
+    })
+
+    it('shows the table beside the group results, or as its own tab without groups', () => {
+      setDetail('active', [stage('group')], [match({ id: 'g1', stageId: 'g' })])
+      const grouped = mountWide()
+      expect(grouped.find('.group-tab .standings-panel').exists()).toBe(true)
+      expect(grouped.findAll('[role="tab"]').map((t) => t.text())).toEqual([
+        'Gruppenphase',
+        'Spieler',
+      ])
+
+      setDetail('active', [stage()], [])
+      const knockoutOnly = mountWide()
+      expect(knockoutOnly.findAll('[role="tab"]').map((t) => t.text())).toEqual([
+        'K.-o.-Phase',
+        'Tabelle',
+        'Spieler',
+      ])
+    })
+
+    it('shows the players when their tab is picked', async () => {
+      setDetail('active', [stage()], [])
+      const view = mountWide()
+
+      await view.findAll('[role="tab"]')[2]!.trigger('click')
+
+      expect(view.find('.tab-players .player-grid').exists()).toBe(true)
+      expect(view.find('.stage-card').exists()).toBe(false)
+    })
+
+    it('lists who plays next and where beside the outcome', () => {
+      setDetail(
+        'active',
+        [stage()],
+        [
+          match({
+            id: 'k1',
+            status: 'ready',
+            floorId: 'f1',
+            participantAId: 'pA',
+            participantBId: 'pB',
+          }),
+        ],
+      )
+      detail.value!.floors = [{ id: 'f1', tournamentId: 't1', name: 'Küche' }]
+      const view = mountWide()
+
+      const next = view.find('.side-next li')
+      expect(next.text()).toContain('Küche')
+      expect(next.text()).toContain('Anna')
+      expect(view.find('.side-panel').text()).toContain('Gerade läuft kein Match')
+    })
   })
 })
