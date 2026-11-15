@@ -17,6 +17,13 @@ import type {
 
 const execFileAsync = promisify(execFile)
 
+// Windows' own bsdtar: started from Git Bash, PATH finds GNU tar first, which reads `C:\…`
+// as a remote `host:path` and mangles backslashes.
+const TAR =
+  process.platform === 'win32'
+    ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    : 'tar'
+
 /**
  * Owns the installed app bundles on disk: seeding, listing, checking the remote release for
  * updates, and installing/updating with sha256 verification + atomic swap (previous bundle kept
@@ -202,7 +209,7 @@ export class AppStore extends EventEmitter {
     await fs.mkdir(staged, { recursive: true })
     await fs.writeFile(tmpTar, buf)
     try {
-      await execFileAsync('tar', ['-xzf', tmpTar, '-C', staged])
+      await execFileAsync(TAR, ['-xzf', tmpTar, '-C', staged])
     } finally {
       await fs.rm(tmpTar, { force: true })
     }
