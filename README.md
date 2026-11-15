@@ -81,6 +81,19 @@ sudo apt install libfuse2t64 fonts-noto-color-emoji
 - **`fonts-noto-color-emoji`** — the apps use emoji as icons; without a color emoji font some of
   them (e.g. the store tile, the fog weather icon) don't render.
 
+The brightness slider in the launcher's Settings writes the display backlight
+(`/sys/class/backlight/*/brightness`, e.g. Touch Display 2). That file is root-only by default;
+let the `video` group (which the default user is in) write it:
+
+```sh
+echo 'SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys%p/brightness", RUN+="/bin/chmod g+w /sys%p/brightness"' \
+  | sudo tee /etc/udev/rules.d/99-pipod-backlight.rules
+sudo udevadm trigger --subsystem-match=backlight
+```
+
+Without it the slider shows but stays disabled. The launcher re-applies the chosen level on every
+start, since the panel boots at the kernel default.
+
 Start the launcher from the Pi's desktop session (autostart or a terminal there). From SSH it
 fails with `Missing X server or $DISPLAY`; prefix `DISPLAY=:0` to put it on the Pi's screen.
 

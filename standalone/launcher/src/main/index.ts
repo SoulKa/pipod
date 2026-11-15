@@ -9,6 +9,7 @@ import { LauncherUpdater } from './launcherUpdater'
 import { handlePiappProtocol, registerPiappScheme } from './protocol'
 import { PIAPP_SCHEME } from './config'
 import { loadSettings, saveSettings } from './settings'
+import { applyBrightness, clampPercent, readBacklight } from './backlight'
 import { HOME_BUTTON_CSS, HOME_NOTCH_HEIGHT, HOME_NOTCH_WIDTH } from '@shared/constants'
 import type { LauncherSettings, LauncherUpdate, NetworkState, UpdateProgress } from '@shared/types'
 
@@ -269,9 +270,18 @@ function registerIpc(): void {
   ipcMain.handle('launcher:quit', () => app.quit())
   ipcMain.handle('launcher:getNetworkState', () => getNetworkState())
   ipcMain.handle('launcher:getSettings', () => loadSettings())
-  ipcMain.handle('launcher:setSettings', (_e, patch: Partial<LauncherSettings>) =>
-    saveSettings(patch)
-  )
+  ipcMain.handle('launcher:setSettings', async (_e, patch: Partial<LauncherSettings>) => {
+    if (patch.brightness !== undefined) {
+      const brightness = clampPercent(patch.brightness)
+      await applyBrightness(brightness)
+      patch = { ...patch, brightness }
+    }
+    return saveSettings(patch)
+  })
+  ipcMain.handle('launcher:getBacklight', () => readBacklight())
+  ipcMain.handle('launcher:previewBrightness', async (_e, percent: number) => {
+    await applyBrightness(percent)
+  })
 
   ipcMain.handle('launcher:getLauncherUpdate', () => launcherUpdater.get())
   ipcMain.handle('launcher:downloadLauncherUpdate', () => launcherUpdater.download())
@@ -299,6 +309,8 @@ app.whenReady().then(async () => {
   // failure silently keeps the working version. Suppressed in dev / via PIPOD_NO_UPDATE so a
   // locally-built app isn't rolled back to the released bundle on every launch.
   const settings = await loadSettings()
+  // The panel comes up at the kernel's default level on every boot; restore the user's choice.
+  if (settings.brightness !== undefined) void applyBrightness(settings.brightness)
   if (autoUpdateSuppressed()) {
     console.log(
       '[launcher] on-launch auto-update suppressed (dev / PIPOD_NO_UPDATE) — leaving installed apps as-is'

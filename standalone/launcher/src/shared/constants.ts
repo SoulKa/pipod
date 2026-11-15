@@ -1,3 +1,6 @@
+// Lowest brightness the Settings slider allows: a black panel would leave no way to find it again.
+export const MIN_BRIGHTNESS_PERCENT = 10
+
 // Small Home "notch" tab hanging from the top-centre edge over a running app. Its overlay
 // WebContentsView is sized to exactly the tab so the rest of the app stays tappable.
 export const HOME_NOTCH_WIDTH = 76

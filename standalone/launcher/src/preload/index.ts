@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  BacklightState,
   CatalogEntry,
   InstalledApp,
   LauncherBridge,
@@ -26,6 +27,9 @@ const launcher: LauncherBridge = {
   getSettings: () => ipcRenderer.invoke('launcher:getSettings') as Promise<LauncherSettings>,
   setSettings: (patch) =>
     ipcRenderer.invoke('launcher:setSettings', patch) as Promise<LauncherSettings>,
+  getBacklight: () => ipcRenderer.invoke('launcher:getBacklight') as Promise<BacklightState>,
+  previewBrightness: (percent) =>
+    ipcRenderer.invoke('launcher:previewBrightness', percent) as Promise<void>,
   getNetworkState: () => ipcRenderer.invoke('launcher:getNetworkState') as Promise<NetworkState>,
   onProgress: (cb) => subscribe<UpdateProgress>('launcher:progress', cb),
   onActiveApp: (cb) => subscribe<string | null>('launcher:activeApp', cb),
