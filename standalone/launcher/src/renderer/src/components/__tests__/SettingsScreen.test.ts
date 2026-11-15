@@ -1,14 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import SettingsScreen from '../SettingsScreen.vue'
-import type { LauncherBridge, LauncherUpdateState } from '@shared/types'
+import type {
+  BacklightState,
+  LauncherBridge,
+  LauncherSettings,
+  LauncherUpdateState
+} from '@shared/types'
 
 const downloadLauncherUpdate = vi.fn(async () => {})
+const previewBrightness = vi.fn(async () => {})
+const setSettings = vi.fn(async (patch: Partial<LauncherSettings>) => ({
+  autoUpdateOnLaunch: true,
+  ...patch
+}))
+let backlight: BacklightState
 
 beforeEach(() => {
   downloadLauncherUpdate.mockClear()
+  previewBrightness.mockClear()
+  setSettings.mockClear()
+  backlight = { available: false, writable: false, percent: 100 }
   window.launcher = {
     getSettings: vi.fn(async () => ({ autoUpdateOnLaunch: true })),
+    getBacklight: vi.fn(async () => backlight),
+    previewBrightness,
+    setSettings,
     downloadLauncherUpdate
   } as Partial<LauncherBridge> as LauncherBridge
 })
@@ -44,5 +61,37 @@ describe('SettingsScreen launcher update', () => {
     expect(settings.get('.launcher .status').text()).toContain('42%')
     expect(settings.find('.launcher .primary').exists()).toBe(false)
     expect(settings.find('progress').exists()).toBe(true)
+  })
+})
+
+describe('SettingsScreen brightness', () => {
+  it('hides the slider when there is no backlight', async () => {
+    const settings = mountSettings()
+    await flushPromises()
+    expect(settings.find('.brightness').exists()).toBe(false)
+  })
+
+  it('previews while dragging and persists on release', async () => {
+    backlight = { available: true, writable: true, percent: 80 }
+    const settings = mountSettings()
+    await flushPromises()
+    const slider = settings.get('.brightness input')
+    expect((slider.element as HTMLInputElement).value).toBe('80')
+
+    // Not setValue(): it fires `change` too, which is the release.
+    ;(slider.element as HTMLInputElement).value = '40'
+    await slider.trigger('input')
+    expect(previewBrightness).toHaveBeenLastCalledWith(40)
+    expect(setSettings).not.toHaveBeenCalled()
+
+    await slider.trigger('change')
+    expect(setSettings).toHaveBeenCalledWith({ brightness: 40 })
+  })
+
+  it('explains a missing write permission', async () => {
+    backlight = { available: true, writable: false, percent: 100 }
+    const settings = mountSettings()
+    await flushPromises()
+    expect(settings.get('.brightness .hint').text()).toContain('README')
   })
 })

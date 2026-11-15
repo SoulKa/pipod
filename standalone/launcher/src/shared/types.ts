@@ -69,6 +69,21 @@ export interface UpdateProgress {
 export interface LauncherSettings {
   /** Auto-apply newer bundles on launch when a release is reachable. */
   autoUpdateOnLaunch: boolean
+  /**
+   * Display backlight in percent, re-applied at startup. Absent until the user first moves the
+   * slider, so the launcher leaves the OS's own brightness alone until then.
+   */
+  brightness?: number
+}
+
+/** The display backlight as read from sysfs in the main process. */
+export interface BacklightState {
+  /** A backlight device exists (the Pi's touch display; false on dev machines). */
+  available: boolean
+  /** The launcher may write it (needs the udev rule from the README on the Pi). */
+  writable: boolean
+  /** Current level, clamped to MIN_BRIGHTNESS_PERCENT..100. */
+  percent: number
 }
 
 /**
@@ -104,7 +119,11 @@ export interface LauncherBridge {
   /** Quit the launcher entirely. */
   quit(): Promise<void>
   getSettings(): Promise<LauncherSettings>
+  /** Persists the patch; a `brightness` in it is also applied to the display. */
   setSettings(patch: Partial<LauncherSettings>): Promise<LauncherSettings>
+  getBacklight(): Promise<BacklightState>
+  /** Apply a brightness live without persisting it (while the slider is dragged). */
+  previewBrightness(percent: number): Promise<void>
   /** Current network status (Wi-Fi / online), read from the OS in the main process. */
   getNetworkState(): Promise<NetworkState>
   /** Subscribe to install/update progress; returns an unsubscribe function. */
