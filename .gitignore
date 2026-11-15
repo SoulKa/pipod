@@ -9,6 +9,9 @@ lerna-debug.log*
 
 node_modules
 .DS_Store
+
+# Yarn's per-machine install cache (rewritten by every `yarn install`)
+.yarn/install-state.gz
 dist
 dist-ssr
 coverage
