@@ -28,6 +28,12 @@ const CHAMPION = 'Anna'
 /** The Pi's portrait touchscreen; in a landscape viewport the board's lower half is cut off. */
 const BOARD_VIEWPORT = { width: 720, height: 1280 }
 
+/**
+ * A spectator's phone. The default landscape viewport gets the single-screen TV layout,
+ * which spreads the table and bracket over tabs; the stacked one shows everything at once.
+ */
+const VIEWER_VIEWPORT = { width: 390, height: 844 }
+
 test('a tournament set up in the console is played to its champion on a board', async ({
   page: admin,
   browser,
@@ -64,6 +70,7 @@ test('a tournament set up in the console is played to its champion on a board', 
     .getByRole('link', { name: /Übersicht öffnen/ })
     .getAttribute('href')
   const viewer = await admin.context().newPage()
+  await viewer.setViewportSize(VIEWER_VIEWPORT)
   await viewer.goto(viewerPath!)
   await expect(viewer.getByRole('heading', { level: 1, name })).toBeVisible()
   await expect(viewer.getByText('Warte auf das erste Match…')).toBeVisible()
@@ -104,9 +111,9 @@ test('a tournament set up in the console is played to its champion on a board', 
   await expect(viewer.locator('.completed-chip')).toContainText(`Sieger: ${CHAMPION}`)
   await expect(viewer.getByText('Turnier beendet.')).toBeVisible()
   await expect(admin.getByText('Alle geplanten Matches sind abgeschlossen.')).toBeVisible()
-  // A finished tournament takes no more boards: re-registering after the final is refused,
-  // so the board falls back to the join wizard and says why.
-  await expect(board.getByText('this tournament is over')).toBeVisible()
+  // After the final the board crowns the winner in place of its lobby.
+  await expect(board.getByRole('heading', { level: 1, name: CHAMPION })).toBeVisible()
+  await expect(board.getByText('Turniersieger')).toBeVisible()
 
   await boardContext.close()
 })

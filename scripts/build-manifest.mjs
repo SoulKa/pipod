@@ -16,6 +16,13 @@ const appsDir = join(repoRoot, 'apps')
 const outDir = process.env.OUT_DIR ? resolve(process.env.OUT_DIR) : join(repoRoot, 'release')
 
 const release = process.env.RELEASE_TAG ?? 'dev'
+
+// Windows' own bsdtar: under Git Bash, PATH finds GNU tar first, which reads `D:\…` as a
+// remote `host:path` and mangles backslashes.
+const tar =
+  process.platform === 'win32'
+    ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    : 'tar'
 let commit = process.env.COMMIT_SHA ?? ''
 if (!commit) {
   try {
@@ -78,7 +85,7 @@ for (const entry of readdirSync(appsDir, { withFileTypes: true }).sort((a, b) =>
     const artifactPath = join(outDir, artifact)
 
     // Tar the dist contents (not the dist dir itself) so extraction lands files at the app root.
-    execFileSync('tar', ['-czf', artifactPath, '-C', distDir, '.'])
+    execFileSync(tar, ['-czf', artifactPath, '-C', distDir, '.'])
     const buf = readFileSync(artifactPath)
 
     apps.push({
