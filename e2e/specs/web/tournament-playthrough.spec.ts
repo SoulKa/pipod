@@ -28,6 +28,12 @@ const CHAMPION = 'Anna'
 /** The Pi's portrait touchscreen; in a landscape viewport the board's lower half is cut off. */
 const BOARD_VIEWPORT = { width: 720, height: 1280 }
 
+/**
+ * A spectator's phone. The default landscape viewport gets the single-screen TV layout,
+ * which spreads the table and bracket over tabs; the stacked one shows everything at once.
+ */
+const VIEWER_VIEWPORT = { width: 390, height: 844 }
+
 test('a tournament set up in the console is played to its champion on a board', async ({
   page: admin,
   browser,
@@ -64,6 +70,7 @@ test('a tournament set up in the console is played to its champion on a board', 
     .getByRole('link', { name: /Übersicht öffnen/ })
     .getAttribute('href')
   const viewer = await admin.context().newPage()
+  await viewer.setViewportSize(VIEWER_VIEWPORT)
   await viewer.goto(viewerPath!)
   await expect(viewer.getByRole('heading', { level: 1, name })).toBeVisible()
   await expect(viewer.getByText('Warte auf das erste Match…')).toBeVisible()
