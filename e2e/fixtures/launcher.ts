@@ -57,12 +57,15 @@ export const test = base.extend<{ launcher: Launcher }>({
 
     // The launcher's own dependency, so the suite always drives the Electron it ships with.
     const executablePath = createRequire(join(LAUNCHER_DIR, 'package.json'))('electron') as string
+    // Run from inside VS Code (an Electron app itself), the environment carries
+    // ELECTRON_RUN_AS_NODE=1, which would start the launcher as plain Node with no window.
+    const { ELECTRON_RUN_AS_NODE: _runAsNode, ...env } = process.env
     const app = await electron.launch({
       executablePath,
       args: [LAUNCHER_DIR, `--user-data-dir=${userData}`, ...headlessLinuxArgs()],
       // Unpackaged, the launcher already treats itself as dev (windowed, seed from the repo);
       // this also keeps it from pulling released bundles over the freshly built ones.
-      env: { ...process.env, PIPOD_NO_UPDATE: '1' },
+      env: { ...env, PIPOD_NO_UPDATE: '1' },
       timeout: 30_000,
     })
 

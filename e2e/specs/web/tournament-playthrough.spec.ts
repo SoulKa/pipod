@@ -111,9 +111,9 @@ test('a tournament set up in the console is played to its champion on a board', 
   await expect(viewer.locator('.completed-chip')).toContainText(`Sieger: ${CHAMPION}`)
   await expect(viewer.getByText('Turnier beendet.')).toBeVisible()
   await expect(admin.getByText('Alle geplanten Matches sind abgeschlossen.')).toBeVisible()
-  // A finished tournament takes no more boards: re-registering after the final is refused,
-  // so the board falls back to the join wizard and says why.
-  await expect(board.getByText('this tournament is over')).toBeVisible()
+  // After the final the board crowns the winner in place of its lobby.
+  await expect(board.getByRole('heading', { level: 1, name: CHAMPION })).toBeVisible()
+  await expect(board.getByText('Turniersieger')).toBeVisible()
 
   await boardContext.close()
 })
